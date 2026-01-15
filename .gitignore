@@ -1,7 +1,9 @@
 # ========================
 # Node / Frontend
 # ========================
-/node_modules
+
+# Зависимости Node
+/frontend/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -10,32 +12,36 @@
 !.yarn/releases
 !.yarn/versions
 
-# Next.js build / export
-/.next/
-/out/
-/build
+# Сборки Next.js
+/frontend/.next/
+/frontend/out/
+/frontend/build
 
-# Logs / debug
+# Логи / отладка
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Misc
+# Прочее
 .DS_Store
 *.pem
 
+# ========================
 # Environment variables
-.env*           # покрывает .env, .env.local, .env.production и т.д.
+# ========================
+.env*           # .env, .env.local, .env.production и т.д.
 
+# ========================
 # Vercel (если используешь)
+# ========================
 .vercel
 
 # ========================
 # TypeScript
 # ========================
 *.tsbuildinfo
-next-env.d.ts
+/frontend/next-env.d.ts
 
 # ========================
 # Python / Backend
