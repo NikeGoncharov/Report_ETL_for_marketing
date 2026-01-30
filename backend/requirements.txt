@@ -1,3 +1,28 @@
 fastapi
 uvicorn
 python-dotenv
+
+# Database
+sqlalchemy
+alembic
+aiosqlite
+
+# Authentication
+python-jose[cryptography]
+passlib==1.7.4
+bcrypt==4.0.1
+email-validator
+
+# HTTP client for external APIs
+httpx
+
+# OAuth
+authlib
+
+# Scheduler (for Phase 6)
+apscheduler
+
+# Testing
+pytest
+pytest-asyncio
+pytest-cov
