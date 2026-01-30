@@ -1,7 +1,7 @@
-// In production with nginx proxy, use empty string (same origin)
-// In development, use localhost:8000
+// In production with nginx proxy, use /api prefix (nginx rewrites to backend)
+// In development, use localhost:8000 directly
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 
-  (typeof window !== "undefined" && window.location.hostname !== "localhost" ? "" : "http://localhost:8000");
+  (typeof window !== "undefined" && window.location.hostname !== "localhost" ? "/api" : "http://localhost:8000");
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -79,6 +79,9 @@ async function refreshToken(): Promise<boolean> {
     return false;
   }
 }
+
+// Helper to get full API path (for external use if needed)
+export const getApiUrl = () => API_URL;
 
 // Auth API
 export const authApi = {
