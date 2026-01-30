@@ -1,0 +1,21 @@
+[Unit]
+Description=RePort Frontend (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=report
+Group=report
+WorkingDirectory=/home/report/RePort/frontend
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+# Logging
+StandardOutput=append:/var/log/report/frontend.log
+StandardError=append:/var/log/report/frontend-error.log
+
+[Install]
+WantedBy=multi-user.target

@@ -48,3 +48,19 @@ yarn-error.log*
 # ========================
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# SQLite database
+/backend/data/
+*.db
+
+# Alembic
+/backend/alembic/__pycache__/
