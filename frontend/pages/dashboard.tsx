@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { projectsApi, authApi } from "../lib/api";
+import Layout from "../components/Layout";
+import { projectsApi } from "../lib/api";
 
 type Project = {
   id: number;
@@ -8,29 +9,19 @@ type Project = {
   created_at: string;
 };
 
-type User = {
-  id: number;
-  email: string;
-};
-
 export default function Dashboard() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [user, setUser] = useState<User | null>(null);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
-  async function loadData() {
+  async function loadProjects() {
     try {
-      const [userData, projectsData] = await Promise.all([
-        authApi.me(),
-        projectsApi.list(),
-      ]);
-      setUser(userData);
-      setProjects(projectsData);
+      const data = await projectsApi.list();
+      setProjects(data);
     } catch {
-      router.push("/login");
+      // Error handled by Layout
     } finally {
       setLoading(false);
     }
@@ -43,7 +34,7 @@ export default function Dashboard() {
     try {
       await projectsApi.create(name);
       setName("");
-      loadData();
+      loadProjects();
     } catch (err) {
       alert("Ошибка создания проекта");
     } finally {
@@ -56,141 +47,93 @@ export default function Dashboard() {
 
     try {
       await projectsApi.delete(id);
-      loadData();
+      loadProjects();
     } catch (err) {
       alert("Ошибка удаления проекта");
     }
   }
 
-  async function handleLogout() {
-    try {
-      await authApi.logout();
-    } finally {
-      router.push("/login");
-    }
-  }
-
   useEffect(() => {
-    loadData();
+    loadProjects();
   }, []);
 
-  if (loading) {
-    return (
-      <div style={{ padding: 40, textAlign: "center" }}>
-        <p>Загрузка...</p>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: 40 }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40 }}>
-        <div>
-          <h1 style={{ margin: 0 }}>RePort</h1>
-          <p style={{ margin: "5px 0 0", color: "#666" }}>
-            {user?.email}
-          </p>
+    <Layout title="Проекты">
+      {/* Stats */}
+      <div className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-card-icon" style={{ background: "var(--primary-light)" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+          </div>
+          <div className="stat-card-value">{projects.length}</div>
+          <div className="stat-card-label">Всего проектов</div>
         </div>
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: "8px 16px",
-            backgroundColor: "transparent",
-            border: "1px solid #ccc",
-            borderRadius: 4,
-            cursor: "pointer",
-          }}
-        >
-          Выйти
-        </button>
       </div>
 
       {/* Create Project */}
-      <div style={{ marginBottom: 30, display: "flex", gap: 10 }}>
-        <input
-          placeholder="Название проекта"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && createProject()}
-          style={{
-            flex: 1,
-            padding: "10px",
-            fontSize: 16,
-            border: "1px solid #ccc",
-            borderRadius: 4,
-          }}
-        />
-        <button
-          onClick={createProject}
-          disabled={creating || !name.trim()}
-          style={{
-            padding: "10px 20px",
-            fontSize: 16,
-            backgroundColor: "#0070f3",
-            color: "white",
-            border: "none",
-            borderRadius: 4,
-            cursor: creating || !name.trim() ? "not-allowed" : "pointer",
-            opacity: creating || !name.trim() ? 0.7 : 1,
-          }}
-        >
-          {creating ? "..." : "Создать проект"}
-        </button>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-body">
+          <div style={{ display: "flex", gap: 12 }}>
+            <input
+              className="input"
+              placeholder="Название нового проекта"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && createProject()}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={createProject}
+              disabled={creating || !name.trim()}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              {creating ? "Создание..." : "Создать проект"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Projects List */}
-      <h2 style={{ marginBottom: 20 }}>Проекты</h2>
-      
-      {projects.length === 0 ? (
-        <p style={{ color: "#666" }}>
-          У вас пока нет проектов. Создайте первый!
-        </p>
+      {loading ? (
+        <div className="loading">
+          <p>Загрузка проектов...</p>
+        </div>
+      ) : projects.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" strokeWidth="2">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+          </div>
+          <h3>Нет проектов</h3>
+          <p>Создайте первый проект, чтобы начать работу с данными</p>
+        </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {projects.map((project) => (
-            <div
-              key={project.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: 15,
-                border: "1px solid #eee",
-                borderRadius: 8,
-                backgroundColor: "#fafafa",
-              }}
-            >
-              <div>
-                <h3 style={{ margin: 0 }}>{project.name}</h3>
-                <p style={{ margin: "5px 0 0", fontSize: 12, color: "#999" }}>
+            <div key={project.id} className="project-card">
+              <div className="project-card-info">
+                <h3>{project.name}</h3>
+                <p className="project-card-date">
                   Создан: {new Date(project.created_at).toLocaleDateString("ru-RU")}
                 </p>
               </div>
-              <div style={{ display: "flex", gap: 10 }}>
+              <div className="project-card-actions">
                 <button
+                  className="btn btn-primary btn-sm"
                   onClick={() => router.push(`/projects/${project.id}`)}
-                  style={{
-                    padding: "8px 16px",
-                    backgroundColor: "#0070f3",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                  }}
                 >
                   Открыть
                 </button>
                 <button
+                  className="btn btn-danger btn-sm"
                   onClick={() => deleteProject(project.id, project.name)}
-                  style={{
-                    padding: "8px 16px",
-                    backgroundColor: "transparent",
-                    color: "#ff4444",
-                    border: "1px solid #ff4444",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                  }}
                 >
                   Удалить
                 </button>
@@ -199,6 +142,6 @@ export default function Dashboard() {
           ))}
         </div>
       )}
-    </div>
+    </Layout>
   );
 }

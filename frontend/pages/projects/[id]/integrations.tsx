@@ -1,6 +1,7 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Layout from "../../../components/Layout";
 import { projectsApi, apiFetch } from "../../../lib/api";
 
 type Project = {
@@ -20,16 +21,34 @@ const INTEGRATION_TYPES = {
     label: "Яндекс.Директ",
     description: "Получение данных о рекламных кампаниях",
     color: "#FC3F1D",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+    ),
   },
   yandex_metrika: {
     label: "Яндекс.Метрика",
     description: "Получение данных о визитах и конверсиях",
     color: "#FC3F1D",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        <path d="M9 12l2 2 4-4"/>
+      </svg>
+    ),
   },
   google_sheets: {
     label: "Google Sheets",
     description: "Экспорт отчётов в Google Таблицы",
     color: "#34A853",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <line x1="3" y1="9" x2="21" y2="9"/>
+        <line x1="9" y1="21" x2="9" y2="9"/>
+      </svg>
+    ),
   },
 };
 
@@ -96,9 +115,7 @@ export default function IntegrationsPage() {
   }, [id]);
 
   useEffect(() => {
-    // Show success/error messages
     if (success) {
-      // Clear query params
       router.replace(`/projects/${id}/integrations`, undefined, { shallow: true });
     }
     if (error) {
@@ -109,9 +126,11 @@ export default function IntegrationsPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: "center" }}>
-        <p>Загрузка...</p>
-      </div>
+      <Layout>
+        <div className="loading">
+          <p>Загрузка...</p>
+        </div>
+      </Layout>
     );
   }
 
@@ -119,38 +138,24 @@ export default function IntegrationsPage() {
     integrations.find((i) => i.type === type);
 
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: 40 }}>
+    <Layout title="Интеграции">
       {/* Breadcrumb */}
-      <div style={{ marginBottom: 20 }}>
-        <Link href="/dashboard" style={{ color: "#0070f3" }}>
-          Проекты
-        </Link>
-        {" / "}
-        <Link href={`/projects/${id}`} style={{ color: "#0070f3" }}>
-          {project?.name}
-        </Link>
-        {" / "}
+      <div className="breadcrumb">
+        <Link href="/dashboard">Проекты</Link>
+        <span className="breadcrumb-separator">/</span>
+        <Link href={`/projects/${id}`}>{project?.name}</Link>
+        <span className="breadcrumb-separator">/</span>
         <span>Интеграции</span>
       </div>
 
-      <h1 style={{ marginBottom: 30 }}>Интеграции</h1>
-
       {success && (
-        <div
-          style={{
-            padding: 15,
-            backgroundColor: "#d4edda",
-            borderRadius: 8,
-            marginBottom: 20,
-            color: "#155724",
-          }}
-        >
+        <div className="alert alert-success">
           Интеграция успешно подключена!
         </div>
       )}
 
       {/* Integration Cards */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {Object.entries(INTEGRATION_TYPES).map(([type, info]) => {
           const integration = getIntegration(type);
           const isConnected = !!integration;
@@ -159,74 +164,68 @@ export default function IntegrationsPage() {
           return (
             <div
               key={type}
-              style={{
-                border: "1px solid #eee",
-                borderRadius: 8,
-                padding: 20,
-                backgroundColor: isConnected ? "#f8fff8" : "#fff",
-              }}
+              className={`integration-card ${isConnected ? "connected" : ""}`}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                }}
-              >
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div
-                      style={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: "50%",
-                        backgroundColor: isConnected ? "#28a745" : "#ccc",
-                      }}
-                    />
-                    <h3 style={{ margin: 0, color: info.color }}>
-                      {info.label}
-                    </h3>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", gap: 16 }}>
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: "var(--border-radius)",
+                      backgroundColor: `${info.color}20`,
+                      color: info.color,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {info.icon}
                   </div>
-                  <p style={{ margin: "10px 0 0", color: "#666" }}>
-                    {info.description}
-                  </p>
-                  {integration?.account_info && (
-                    <p style={{ margin: "5px 0 0", fontSize: 14, color: "#999" }}>
-                      Аккаунт:{" "}
-                      {integration.account_info.name ||
-                        integration.account_info.email ||
-                        integration.account_info.login}
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <h3 style={{ margin: 0 }}>{info.label}</h3>
+                      {isConnected && (
+                        <span
+                          style={{
+                            fontSize: "0.75rem",
+                            padding: "2px 8px",
+                            borderRadius: "9999px",
+                            backgroundColor: "var(--success-light)",
+                            color: "var(--success)",
+                          }}
+                        >
+                          Подключено
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: 0, color: "var(--gray-600)", fontSize: "0.875rem" }}>
+                      {info.description}
                     </p>
-                  )}
+                    {integration?.account_info && (
+                      <p style={{ margin: "8px 0 0", fontSize: "0.8125rem", color: "var(--gray-500)" }}>
+                        Аккаунт:{" "}
+                        {integration.account_info.name ||
+                          integration.account_info.email ||
+                          integration.account_info.login}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div>
                   {isConnected ? (
                     <button
+                      className="btn btn-danger btn-sm"
                       onClick={() => disconnectIntegration(integration.id, type)}
-                      style={{
-                        padding: "8px 16px",
-                        backgroundColor: "transparent",
-                        color: "#dc3545",
-                        border: "1px solid #dc3545",
-                        borderRadius: 4,
-                        cursor: "pointer",
-                      }}
                     >
                       Отключить
                     </button>
                   ) : (
                     <button
+                      className="btn btn-primary btn-sm"
                       onClick={() => connectIntegration(type)}
                       disabled={isConnecting}
-                      style={{
-                        padding: "8px 16px",
-                        backgroundColor: info.color,
-                        color: "white",
-                        border: "none",
-                        borderRadius: 4,
-                        cursor: isConnecting ? "not-allowed" : "pointer",
-                        opacity: isConnecting ? 0.7 : 1,
-                      }}
+                      style={{ backgroundColor: info.color, borderColor: info.color }}
                     >
                       {isConnecting ? "Подключение..." : "Подключить"}
                     </button>
@@ -238,18 +237,12 @@ export default function IntegrationsPage() {
         })}
       </div>
 
-      {/* Back button */}
-      <div style={{ marginTop: 40 }}>
-        <Link
-          href={`/projects/${id}`}
-          style={{
-            color: "#0070f3",
-            textDecoration: "none",
-          }}
-        >
+      {/* Back link */}
+      <div style={{ marginTop: 32 }}>
+        <Link href={`/projects/${id}`} className="btn btn-secondary">
           ← Вернуться к проекту
         </Link>
       </div>
-    </div>
+    </Layout>
   );
 }
