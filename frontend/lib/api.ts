@@ -24,7 +24,8 @@ export async function apiFetch<T = any>(
   });
 
   // Handle 401 - try to refresh token
-  if (res.status === 401 && path !== "/login" && path !== "/refresh" && path !== "/register") {
+  // Exclude /me from redirect (used for auth check on landing page)
+  if (res.status === 401 && path !== "/login" && path !== "/refresh" && path !== "/register" && path !== "/me") {
     const refreshed = await refreshToken();
     if (refreshed) {
       // Retry the original request
