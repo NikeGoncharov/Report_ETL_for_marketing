@@ -1,6 +1,7 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Layout from "../../../../components/Layout";
 import { projectsApi, apiFetch } from "../../../../lib/api";
 
 type Project = {
@@ -87,9 +88,6 @@ export default function NewReportPage() {
   const [transformations, setTransformations] = useState<Transformation[]>([]);
   const [previewData, setPreviewData] = useState<any>(null);
 
-  // Current step
-  const [step, setStep] = useState(1);
-
   async function loadData() {
     if (!id) return;
 
@@ -101,7 +99,6 @@ export default function NewReportPage() {
       setProject(projectData);
       setIntegrations(integrationsData);
 
-      // Load campaigns if Direct is connected
       const directIntegration = integrationsData.find((i: Integration) => i.type === "yandex_direct");
       if (directIntegration) {
         try {
@@ -112,7 +109,6 @@ export default function NewReportPage() {
         }
       }
 
-      // Load counters if Metrika is connected
       const metrikaIntegration = integrationsData.find((i: Integration) => i.type === "yandex_metrika");
       if (metrikaIntegration) {
         try {
@@ -255,9 +251,11 @@ export default function NewReportPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: "center" }}>
-        <p>Загрузка...</p>
-      </div>
+      <Layout>
+        <div className="loading">
+          <p>Загрузка...</p>
+        </div>
+      </Layout>
     );
   }
 
@@ -265,393 +263,313 @@ export default function NewReportPage() {
   const hasMetrikaIntegration = integrations.some((i) => i.type === "yandex_metrika");
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: 40 }}>
+    <Layout title="Новый отчёт">
       {/* Breadcrumb */}
-      <div style={{ marginBottom: 20 }}>
-        <Link href="/dashboard" style={{ color: "#0070f3" }}>
-          Проекты
-        </Link>
-        {" / "}
-        <Link href={`/projects/${id}`} style={{ color: "#0070f3" }}>
-          {project?.name}
-        </Link>
-        {" / "}
+      <div className="breadcrumb">
+        <Link href="/dashboard">Проекты</Link>
+        <span className="breadcrumb-separator">/</span>
+        <Link href={`/projects/${id}`}>{project?.name}</Link>
+        <span className="breadcrumb-separator">/</span>
         <span>Новый отчёт</span>
       </div>
 
-      <h1 style={{ marginBottom: 30 }}>Создание отчёта</h1>
-
       {/* Step 1: Basic Info */}
-      <section style={{ marginBottom: 30 }}>
-        <h2 style={{ marginBottom: 15 }}>1. Основные данные</h2>
-        <input
-          type="text"
-          placeholder="Название отчёта"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{
-            width: "100%",
-            padding: 12,
-            fontSize: 16,
-            border: "1px solid #ccc",
-            borderRadius: 4,
-            boxSizing: "border-box",
-          }}
-        />
-      </section>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header">
+          <h3>1. Основные данные</h3>
+        </div>
+        <div className="card-body">
+          <div className="input-group" style={{ marginBottom: 0 }}>
+            <label className="input-label">Название отчёта</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="Например: Отчёт по рекламе за месяц"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Step 2: Sources */}
-      <section style={{ marginBottom: 30 }}>
-        <h2 style={{ marginBottom: 15 }}>2. Источники данных</h2>
-
-        {!hasDirectIntegration && !hasMetrikaIntegration && (
-          <div style={{ padding: 20, backgroundColor: "#fff3cd", borderRadius: 8, marginBottom: 15 }}>
-            <p style={{ margin: 0 }}>
-              Нет подключённых интеграций.{" "}
-              <Link href={`/projects/${id}/integrations`} style={{ color: "#0070f3" }}>
-                Подключить
-              </Link>
-            </p>
-          </div>
-        )}
-
-        {/* Add source buttons */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 15 }}>
-          {hasDirectIntegration && (
-            <button
-              onClick={() => addSource("direct")}
-              style={{
-                padding: "8px 16px",
-                backgroundColor: "#FC3F1D",
-                color: "white",
-                border: "none",
-                borderRadius: 4,
-                cursor: "pointer",
-              }}
-            >
-              + Яндекс.Директ
-            </button>
-          )}
-          {hasMetrikaIntegration && (
-            <button
-              onClick={() => addSource("metrika")}
-              style={{
-                padding: "8px 16px",
-                backgroundColor: "#FC3F1D",
-                color: "white",
-                border: "none",
-                borderRadius: 4,
-                cursor: "pointer",
-              }}
-            >
-              + Яндекс.Метрика
-            </button>
-          )}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header">
+          <h3>2. Источники данных</h3>
         </div>
-
-        {/* Source list */}
-        {sources.map((source, index) => (
-          <div
-            key={source.id}
-            style={{
-              border: "1px solid #eee",
-              borderRadius: 8,
-              padding: 15,
-              marginBottom: 10,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <strong>
-                {source.type === "direct" ? "Яндекс.Директ" : "Яндекс.Метрика"}
-              </strong>
-              <button
-                onClick={() => removeSource(index)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#ff4444",
-                  cursor: "pointer",
-                }}
-              >
-                Удалить
-              </button>
+        <div className="card-body">
+          {!hasDirectIntegration && !hasMetrikaIntegration && (
+            <div className="alert alert-warning" style={{ marginBottom: 16 }}>
+              Нет подключённых интеграций.{" "}
+              <Link href={`/projects/${id}/integrations`}>Подключить</Link>
             </div>
+          )}
 
-            {source.type === "direct" && (
-              <div>
-                <label style={{ display: "block", marginBottom: 5 }}>Кампании:</label>
-                <select
-                  multiple
-                  value={source.campaign_ids?.map(String) || []}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.selectedOptions, (o) => Number(o.value));
-                    updateSource(index, { campaign_ids: selected });
-                  }}
-                  style={{ width: "100%", minHeight: 100 }}
-                >
-                  {campaigns.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <small style={{ color: "#666" }}>
-                  Оставьте пустым для всех кампаний
-                </small>
-              </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            {hasDirectIntegration && (
+              <button
+                className="btn btn-sm"
+                style={{ backgroundColor: "#FC3F1D", color: "white", border: "none" }}
+                onClick={() => addSource("direct")}
+              >
+                + Яндекс.Директ
+              </button>
             )}
-
-            {source.type === "metrika" && (
-              <div>
-                <label style={{ display: "block", marginBottom: 5 }}>Счётчик:</label>
-                <select
-                  value={source.counter_id || ""}
-                  onChange={(e) => updateSource(index, { counter_id: Number(e.target.value) })}
-                  style={{ width: "100%", padding: 8, marginBottom: 10 }}
-                >
-                  {counters.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.site})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {hasMetrikaIntegration && (
+              <button
+                className="btn btn-sm"
+                style={{ backgroundColor: "#FC3F1D", color: "white", border: "none" }}
+                onClick={() => addSource("metrika")}
+              >
+                + Яндекс.Метрика
+              </button>
             )}
           </div>
-        ))}
-      </section>
+
+          {sources.map((source, index) => (
+            <div
+              key={source.id}
+              className="card"
+              style={{ marginBottom: 12, backgroundColor: "var(--gray-50)" }}
+            >
+              <div className="card-body" style={{ padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                  <strong>{source.type === "direct" ? "Яндекс.Директ" : "Яндекс.Метрика"}</strong>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={() => removeSource(index)}
+                  >
+                    Удалить
+                  </button>
+                </div>
+
+                {source.type === "direct" && (
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">Кампании</label>
+                    <select
+                      multiple
+                      className="input"
+                      value={source.campaign_ids?.map(String) || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, (o) => Number(o.value));
+                        updateSource(index, { campaign_ids: selected });
+                      }}
+                      style={{ minHeight: 100 }}
+                    >
+                      {campaigns.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: "var(--gray-500)", marginTop: 4, display: "block" }}>
+                      Оставьте пустым для всех кампаний
+                    </small>
+                  </div>
+                )}
+
+                {source.type === "metrika" && (
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">Счётчик</label>
+                    <select
+                      className="input"
+                      value={source.counter_id || ""}
+                      onChange={(e) => updateSource(index, { counter_id: Number(e.target.value) })}
+                    >
+                      {counters.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.site})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Step 3: Period */}
-      <section style={{ marginBottom: 30 }}>
-        <h2 style={{ marginBottom: 15 }}>3. Период</h2>
-        <select
-          value={period}
-          onChange={(e) => setPeriod(e.target.value)}
-          style={{ width: "100%", padding: 12, fontSize: 16, borderRadius: 4, border: "1px solid #ccc" }}
-        >
-          {PERIOD_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </section>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header">
+          <h3>3. Период</h3>
+        </div>
+        <div className="card-body">
+          <select
+            className="input"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+          >
+            {PERIOD_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {/* Step 4: Transformations */}
-      <section style={{ marginBottom: 30 }}>
-        <h2 style={{ marginBottom: 15 }}>4. Трансформации (опционально)</h2>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header">
+          <h3>4. Трансформации (опционально)</h3>
+        </div>
+        <div className="card-body">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+            {TRANSFORMATION_TYPES.map((t) => (
+              <button
+                key={t.value}
+                className="btn btn-secondary btn-sm"
+                onClick={() => addTransformation(t.value)}
+                title={t.description}
+              >
+                + {t.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Add transformation buttons */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 15 }}>
-          {TRANSFORMATION_TYPES.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => addTransformation(t.value)}
-              title={t.description}
-              style={{
-                padding: "6px 12px",
-                backgroundColor: "#f5f5f5",
-                border: "1px solid #ddd",
-                borderRadius: 4,
-                cursor: "pointer",
-              }}
+          {transformations.map((transform, index) => (
+            <div
+              key={index}
+              className="card"
+              style={{ marginBottom: 12, backgroundColor: "var(--gray-50)" }}
             >
-              + {t.label}
-            </button>
+              <div className="card-body" style={{ padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                  <strong>
+                    {TRANSFORMATION_TYPES.find((t) => t.value === transform.type)?.label || transform.type}
+                  </strong>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={() => removeTransformation(index)}
+                  >
+                    Удалить
+                  </button>
+                </div>
+
+                {transform.type === "extract" && (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <input
+                      className="input"
+                      placeholder="Колонка (например: utm_content)"
+                      value={transform.column || ""}
+                      onChange={(e) => updateTransformation(index, { column: e.target.value })}
+                    />
+                    <input
+                      className="input"
+                      placeholder="Regex паттерн (например: ^([^_]+))"
+                      value={transform.pattern || ""}
+                      onChange={(e) => updateTransformation(index, { pattern: e.target.value })}
+                    />
+                    <input
+                      className="input"
+                      placeholder="Новая колонка (например: channel)"
+                      value={transform.output_column || ""}
+                      onChange={(e) => updateTransformation(index, { output_column: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                {transform.type === "join" && (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div style={{ display: "flex", gap: 12 }}>
+                      <select
+                        className="input"
+                        value={transform.left || ""}
+                        onChange={(e) => updateTransformation(index, { left: e.target.value })}
+                      >
+                        <option value="">Левый источник</option>
+                        {sources.map((s) => (
+                          <option key={s.id} value={s.id}>{s.id}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="input"
+                        value={transform.right || ""}
+                        onChange={(e) => updateTransformation(index, { right: e.target.value })}
+                      >
+                        <option value="">Правый источник</option>
+                        {sources.map((s) => (
+                          <option key={s.id} value={s.id}>{s.id}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <input
+                      className="input"
+                      placeholder="Колонка для объединения (например: utm_source)"
+                      value={transform.on || ""}
+                      onChange={(e) => updateTransformation(index, { on: e.target.value })}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
           ))}
         </div>
+      </div>
 
-        {/* Transformation list */}
-        {transformations.map((transform, index) => (
-          <div
-            key={index}
-            style={{
-              border: "1px solid #e0e0e0",
-              borderRadius: 8,
-              padding: 15,
-              marginBottom: 10,
-              backgroundColor: "#fafafa",
-            }}
+      {/* Step 5: Preview */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header">
+          <h3>5. Превью</h3>
+        </div>
+        <div className="card-body">
+          <button
+            className="btn btn-success"
+            onClick={handlePreview}
+            disabled={previewing || sources.length === 0}
+            style={{ marginBottom: 16 }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <strong>
-                {TRANSFORMATION_TYPES.find((t) => t.value === transform.type)?.label || transform.type}
-              </strong>
-              <button
-                onClick={() => removeTransformation(index)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#ff4444",
-                  cursor: "pointer",
-                }}
-              >
-                Удалить
-              </button>
-            </div>
+            {previewing ? "Загрузка..." : "Показать превью"}
+          </button>
 
-            {/* Different inputs based on transformation type */}
-            {transform.type === "extract" && (
-              <div style={{ display: "grid", gap: 10 }}>
-                <input
-                  placeholder="Колонка (например: utm_content)"
-                  value={transform.column || ""}
-                  onChange={(e) => updateTransformation(index, { column: e.target.value })}
-                  style={{ padding: 8, border: "1px solid #ccc", borderRadius: 4 }}
-                />
-                <input
-                  placeholder="Regex паттерн (например: ^([^_]+))"
-                  value={transform.pattern || ""}
-                  onChange={(e) => updateTransformation(index, { pattern: e.target.value })}
-                  style={{ padding: 8, border: "1px solid #ccc", borderRadius: 4 }}
-                />
-                <input
-                  placeholder="Новая колонка (например: channel)"
-                  value={transform.output_column || ""}
-                  onChange={(e) => updateTransformation(index, { output_column: e.target.value })}
-                  style={{ padding: 8, border: "1px solid #ccc", borderRadius: 4 }}
-                />
-              </div>
-            )}
-
-            {transform.type === "join" && (
-              <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <select
-                    value={transform.left || ""}
-                    onChange={(e) => updateTransformation(index, { left: e.target.value })}
-                    style={{ flex: 1, padding: 8 }}
-                  >
-                    <option value="">Левый источник</option>
-                    {sources.map((s) => (
-                      <option key={s.id} value={s.id}>{s.id}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={transform.right || ""}
-                    onChange={(e) => updateTransformation(index, { right: e.target.value })}
-                    style={{ flex: 1, padding: 8 }}
-                  >
-                    <option value="">Правый источник</option>
-                    {sources.map((s) => (
-                      <option key={s.id} value={s.id}>{s.id}</option>
-                    ))}
-                  </select>
-                </div>
-                <input
-                  placeholder="Колонка для объединения (например: utm_source)"
-                  value={transform.on || ""}
-                  onChange={(e) => updateTransformation(index, { on: e.target.value })}
-                  style={{ padding: 8, border: "1px solid #ccc", borderRadius: 4 }}
-                />
-              </div>
-            )}
-          </div>
-        ))}
-      </section>
-
-      {/* Preview */}
-      <section style={{ marginBottom: 30 }}>
-        <h2 style={{ marginBottom: 15 }}>5. Превью</h2>
-        <button
-          onClick={handlePreview}
-          disabled={previewing || sources.length === 0}
-          style={{
-            padding: "12px 24px",
-            backgroundColor: "#28a745",
-            color: "white",
-            border: "none",
-            borderRadius: 4,
-            cursor: previewing || sources.length === 0 ? "not-allowed" : "pointer",
-            opacity: previewing || sources.length === 0 ? 0.7 : 1,
-            marginBottom: 15,
-          }}
-        >
-          {previewing ? "Загрузка..." : "Показать превью"}
-        </button>
-
-        {previewData && (
-          <div style={{ overflowX: "auto" }}>
-            <p style={{ color: "#666", marginBottom: 10 }}>
-              Строк: {previewData.row_count}
-            </p>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {previewData.columns.map((col: string) => (
-                    <th
-                      key={col}
-                      style={{
-                        textAlign: "left",
-                        padding: 8,
-                        borderBottom: "2px solid #ddd",
-                        backgroundColor: "#f5f5f5",
-                      }}
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {previewData.data.slice(0, 10).map((row: any, i: number) => (
-                  <tr key={i}>
+          {previewData && (
+            <div style={{ overflowX: "auto" }}>
+              <p style={{ color: "var(--gray-600)", marginBottom: 12 }}>
+                Строк: {previewData.row_count}
+              </p>
+              <table>
+                <thead>
+                  <tr>
                     {previewData.columns.map((col: string) => (
-                      <td
-                        key={col}
-                        style={{
-                          padding: 8,
-                          borderBottom: "1px solid #eee",
-                        }}
-                      >
-                        {row[col] ?? "—"}
-                      </td>
+                      <th key={col}>{col}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {previewData.row_count > 10 && (
-              <p style={{ color: "#666", marginTop: 10 }}>
-                Показано первые 10 из {previewData.row_count} строк
-              </p>
-            )}
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody>
+                  {previewData.data.slice(0, 10).map((row: any, i: number) => (
+                    <tr key={i}>
+                      {previewData.columns.map((col: string) => (
+                        <td key={col}>{row[col] ?? "—"}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {previewData.row_count > 10 && (
+                <p style={{ color: "var(--gray-500)", marginTop: 12 }}>
+                  Показано первые 10 из {previewData.row_count} строк
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ display: "flex", gap: 12 }}>
         <button
+          className="btn btn-primary btn-lg"
           onClick={handleSave}
           disabled={saving}
-          style={{
-            padding: "12px 24px",
-            backgroundColor: "#0070f3",
-            color: "white",
-            border: "none",
-            borderRadius: 4,
-            cursor: saving ? "not-allowed" : "pointer",
-            opacity: saving ? 0.7 : 1,
-          }}
         >
           {saving ? "Сохранение..." : "Сохранить отчёт"}
         </button>
-        <Link
-          href={`/projects/${id}`}
-          style={{
-            padding: "12px 24px",
-            backgroundColor: "transparent",
-            color: "#666",
-            border: "1px solid #ccc",
-            borderRadius: 4,
-            textDecoration: "none",
-            display: "inline-block",
-          }}
-        >
+        <Link href={`/projects/${id}`} className="btn btn-secondary btn-lg">
           Отмена
         </Link>
       </div>
-    </div>
+    </Layout>
   );
 }

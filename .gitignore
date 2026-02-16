@@ -56,11 +56,7 @@ venv/
 env/
 *.egg-info/
 dist/
-build/
-
-# SQLite database
+build/# SQLite database
 /backend/data/
-*.db
-
-# Alembic
+*.db# Alembic
 /backend/alembic/__pycache__/

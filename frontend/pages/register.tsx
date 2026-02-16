@@ -29,7 +29,6 @@ export default function Register() {
 
     try {
       await authApi.register(email, password);
-      // Auto-login after registration
       await authApi.login(email, password);
       router.push("/dashboard");
     } catch (err: any) {
@@ -44,113 +43,83 @@ export default function Register() {
   }
 
   return (
-    <div style={{ maxWidth: 400, margin: "100px auto", padding: "0 20px" }}>
-      <h1 style={{ marginBottom: 10 }}>RePort</h1>
-      <p style={{ color: "#666", marginBottom: 30 }}>
-        Аналитика рекламных кампаний
-      </p>
-
-      <h2 style={{ marginBottom: 20 }}>Регистрация</h2>
-
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: 15 }}>
-          <label htmlFor="email" style={{ display: "block", marginBottom: 5 }}>
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            placeholder="email@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{
-              width: "100%",
-              padding: "10px",
-              fontSize: 16,
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: 15 }}>
-          <label htmlFor="password" style={{ display: "block", marginBottom: 5 }}>
-            Пароль
-          </label>
-          <input
-            id="password"
-            type="password"
-            placeholder="Минимум 6 символов"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={6}
-            style={{
-              width: "100%",
-              padding: "10px",
-              fontSize: 16,
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label htmlFor="confirmPassword" style={{ display: "block", marginBottom: 5 }}>
-            Подтвердите пароль
-          </label>
-          <input
-            id="confirmPassword"
-            type="password"
-            placeholder="Повторите пароль"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-            style={{
-              width: "100%",
-              padding: "10px",
-              fontSize: 16,
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: "100%",
-            padding: "12px",
-            fontSize: 16,
-            backgroundColor: "#0070f3",
-            color: "white",
-            border: "none",
-            borderRadius: 4,
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
-          {loading ? "Регистрация..." : "Зарегистрироваться"}
-        </button>
-      </form>
-
-      {error && (
-        <p style={{ color: "red", marginTop: 15, textAlign: "center" }}>
-          {error}
+    <div className="auth-page">
+      <div className="auth-card">
+        <img src="/logo.png" alt="RePort" className="auth-logo" />
+        
+        <h1 className="auth-title">Регистрация</h1>
+        <p className="auth-subtitle">
+          Создайте аккаунт RePort
         </p>
-      )}
 
-      <p style={{ marginTop: 30, textAlign: "center", color: "#666" }}>
-        Уже есть аккаунт?{" "}
-        <Link href="/login" style={{ color: "#0070f3" }}>
-          Войти
-        </Link>
-      </p>
+        <form onSubmit={handleSubmit}>
+          <div className="input-group">
+            <label htmlFor="email" className="input-label">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="input"
+              placeholder="email@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="input-group">
+            <label htmlFor="password" className="input-label">
+              Пароль
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="input"
+              placeholder="Минимум 6 символов"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+            />
+          </div>
+
+          <div className="input-group">
+            <label htmlFor="confirmPassword" className="input-label">
+              Подтвердите пароль
+            </label>
+            <input
+              id="confirmPassword"
+              type="password"
+              className="input"
+              placeholder="Повторите пароль"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="alert alert-danger" style={{ marginBottom: 16 }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-lg"
+            disabled={loading}
+            style={{ width: "100%" }}
+          >
+            {loading ? "Регистрация..." : "Зарегистрироваться"}
+          </button>
+        </form>
+
+        <div className="auth-footer">
+          Уже есть аккаунт?{" "}
+          <Link href="/login">Войти</Link>
+        </div>
+      </div>
     </div>
   );
 }

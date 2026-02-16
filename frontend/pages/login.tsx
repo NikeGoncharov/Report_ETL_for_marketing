@@ -26,90 +26,67 @@ export default function Login() {
   }
 
   return (
-    <div style={{ maxWidth: 400, margin: "100px auto", padding: "0 20px" }}>
-      <h1 style={{ marginBottom: 10 }}>RePort</h1>
-      <p style={{ color: "#666", marginBottom: 30 }}>
-        Аналитика рекламных кампаний
-      </p>
-
-      <h2 style={{ marginBottom: 20 }}>Вход</h2>
-
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: 15 }}>
-          <label htmlFor="email" style={{ display: "block", marginBottom: 5 }}>
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            placeholder="email@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{
-              width: "100%",
-              padding: "10px",
-              fontSize: 16,
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label htmlFor="password" style={{ display: "block", marginBottom: 5 }}>
-            Пароль
-          </label>
-          <input
-            id="password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{
-              width: "100%",
-              padding: "10px",
-              fontSize: 16,
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: "100%",
-            padding: "12px",
-            fontSize: 16,
-            backgroundColor: "#0070f3",
-            color: "white",
-            border: "none",
-            borderRadius: 4,
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
-          {loading ? "Вход..." : "Войти"}
-        </button>
-      </form>
-
-      {error && (
-        <p style={{ color: "red", marginTop: 15, textAlign: "center" }}>
-          {error}
+    <div className="auth-page">
+      <div className="auth-card">
+        <img src="/logo.png" alt="RePort" className="auth-logo" />
+        
+        <h1 className="auth-title">Вход</h1>
+        <p className="auth-subtitle">
+          Войдите в свой аккаунт RePort
         </p>
-      )}
 
-      <p style={{ marginTop: 30, textAlign: "center", color: "#666" }}>
-        Нет аккаунта?{" "}
-        <Link href="/register" style={{ color: "#0070f3" }}>
-          Зарегистрироваться
-        </Link>
-      </p>
+        <form onSubmit={handleSubmit}>
+          <div className="input-group">
+            <label htmlFor="email" className="input-label">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="input"
+              placeholder="email@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="input-group">
+            <label htmlFor="password" className="input-label">
+              Пароль
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="input"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="alert alert-danger" style={{ marginBottom: 16 }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-lg"
+            disabled={loading}
+            style={{ width: "100%" }}
+          >
+            {loading ? "Вход..." : "Войти"}
+          </button>
+        </form>
+
+        <div className="auth-footer">
+          Нет аккаунта?{" "}
+          <Link href="/register">Зарегистрироваться</Link>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Layout from "../../../../components/Layout";
 import { projectsApi, apiFetch } from "../../../../lib/api";
 
 type Project = {
@@ -65,7 +66,6 @@ export default function ReportPage() {
       await apiFetch(`/projects/${projectId}/reports/${reportIdNum}/run`, {
         method: "POST",
       });
-      // Reload runs
       const runsData = await apiFetch(`/projects/${projectId}/reports/${reportIdNum}/runs`);
       setRuns(runsData);
     } catch (err: any) {
@@ -111,224 +111,192 @@ export default function ReportPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: "center" }}>
-        <p>Загрузка...</p>
-      </div>
+      <Layout>
+        <div className="loading">
+          <p>Загрузка...</p>
+        </div>
+      </Layout>
     );
   }
 
   if (!report) {
     return (
-      <div style={{ padding: 40, textAlign: "center" }}>
-        <p>Отчёт не найден</p>
-      </div>
+      <Layout>
+        <div className="empty-state">
+          <h3>Отчёт не найден</h3>
+          <Link href={`/projects/${id}`} className="btn btn-primary">
+            Вернуться к проекту
+          </Link>
+        </div>
+      </Layout>
     );
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: 40 }}>
+    <Layout title={report.name}>
       {/* Breadcrumb */}
-      <div style={{ marginBottom: 20 }}>
-        <Link href="/dashboard" style={{ color: "#0070f3" }}>
-          Проекты
-        </Link>
-        {" / "}
-        <Link href={`/projects/${id}`} style={{ color: "#0070f3" }}>
-          {project?.name}
-        </Link>
-        {" / "}
+      <div className="breadcrumb">
+        <Link href="/dashboard">Проекты</Link>
+        <span className="breadcrumb-separator">/</span>
+        <Link href={`/projects/${id}`}>{project?.name}</Link>
+        <span className="breadcrumb-separator">/</span>
         <span>{report.name}</span>
       </div>
 
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30 }}>
-        <h1 style={{ margin: 0 }}>{report.name}</h1>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={handleRun}
-            disabled={running}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: "#28a745",
-              color: "white",
-              border: "none",
-              borderRadius: 4,
-              cursor: running ? "not-allowed" : "pointer",
-              opacity: running ? 0.7 : 1,
-            }}
-          >
-            {running ? "Запуск..." : "Запустить"}
-          </button>
-          <button
-            onClick={handleDelete}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: "transparent",
-              color: "#dc3545",
-              border: "1px solid #dc3545",
-              borderRadius: 4,
-              cursor: "pointer",
-            }}
-          >
-            Удалить
-          </button>
-        </div>
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 32 }}>
+        <button
+          className="btn btn-success"
+          onClick={handleRun}
+          disabled={running}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5,3 19,12 5,21"/>
+          </svg>
+          {running ? "Запуск..." : "Запустить"}
+        </button>
+        <button className="btn btn-danger" onClick={handleDelete}>
+          Удалить
+        </button>
       </div>
 
       {/* Config summary */}
-      <section style={{ marginBottom: 30 }}>
-        <h2 style={{ marginBottom: 15 }}>Конфигурация</h2>
-        <div style={{ backgroundColor: "#f5f5f5", padding: 15, borderRadius: 8 }}>
-          <p><strong>Источники:</strong> {report.config.sources?.map((s: any) => s.type).join(", ") || "—"}</p>
-          <p><strong>Период:</strong> {report.config.period?.type || "—"}</p>
-          <p><strong>Трансформации:</strong> {report.config.transformations?.length || 0}</p>
-          <p style={{ margin: 0 }}>
-            <strong>Создан:</strong> {new Date(report.created_at).toLocaleString("ru-RU")}
-          </p>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header">
+          <h3>Конфигурация</h3>
         </div>
-      </section>
+        <div className="card-body">
+          <div style={{ display: "grid", gap: 8 }}>
+            <p>
+              <strong>Источники:</strong>{" "}
+              {report.config.sources?.map((s: any) => s.type === "direct" ? "Яндекс.Директ" : "Яндекс.Метрика").join(", ") || "—"}
+            </p>
+            <p>
+              <strong>Период:</strong>{" "}
+              {report.config.period?.type || "—"}
+            </p>
+            <p>
+              <strong>Трансформации:</strong>{" "}
+              {report.config.transformations?.length || 0}
+            </p>
+            <p style={{ margin: 0 }}>
+              <strong>Создан:</strong>{" "}
+              {new Date(report.created_at).toLocaleString("ru-RU")}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Preview */}
-      <section style={{ marginBottom: 30 }}>
-        <h2 style={{ marginBottom: 15 }}>Превью данных</h2>
-        <button
-          onClick={handlePreview}
-          disabled={previewing}
-          style={{
-            padding: "10px 20px",
-            backgroundColor: "#0070f3",
-            color: "white",
-            border: "none",
-            borderRadius: 4,
-            cursor: previewing ? "not-allowed" : "pointer",
-            opacity: previewing ? 0.7 : 1,
-            marginBottom: 15,
-          }}
-        >
-          {previewing ? "Загрузка..." : "Показать превью"}
-        </button>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header">
+          <h3>Превью данных</h3>
+        </div>
+        <div className="card-body">
+          <button
+            className="btn btn-primary"
+            onClick={handlePreview}
+            disabled={previewing}
+            style={{ marginBottom: 16 }}
+          >
+            {previewing ? "Загрузка..." : "Показать превью"}
+          </button>
 
-        {previewData && (
-          <div style={{ overflowX: "auto" }}>
-            <p style={{ color: "#666", marginBottom: 10 }}>
-              Строк: {previewData.row_count}
-            </p>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {previewData.columns.map((col: string) => (
-                    <th
-                      key={col}
-                      style={{
-                        textAlign: "left",
-                        padding: 8,
-                        borderBottom: "2px solid #ddd",
-                        backgroundColor: "#f5f5f5",
-                      }}
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {previewData.data.slice(0, 10).map((row: any, i: number) => (
-                  <tr key={i}>
+          {previewData && (
+            <div style={{ overflowX: "auto" }}>
+              <p style={{ color: "var(--gray-600)", marginBottom: 12 }}>
+                Строк: {previewData.row_count}
+              </p>
+              <table>
+                <thead>
+                  <tr>
                     {previewData.columns.map((col: string) => (
-                      <td
-                        key={col}
-                        style={{
-                          padding: 8,
-                          borderBottom: "1px solid #eee",
-                        }}
-                      >
-                        {row[col] ?? "—"}
-                      </td>
+                      <th key={col}>{col}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody>
+                  {previewData.data.slice(0, 10).map((row: any, i: number) => (
+                    <tr key={i}>
+                      {previewData.columns.map((col: string) => (
+                        <td key={col}>{row[col] ?? "—"}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Run history */}
-      <section>
-        <h2 style={{ marginBottom: 15 }}>История запусков</h2>
-        {runs.length === 0 ? (
-          <p style={{ color: "#666" }}>Отчёт ещё не запускался</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {runs.map((run) => (
-              <div
-                key={run.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: 15,
-                  border: "1px solid #eee",
-                  borderRadius: 8,
-                }}
-              >
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        width: 10,
-                        height: 10,
-                        borderRadius: "50%",
-                        backgroundColor:
-                          run.status === "completed"
-                            ? "#28a745"
-                            : run.status === "failed"
-                            ? "#dc3545"
-                            : "#ffc107",
-                      }}
-                    />
-                    <span>
-                      {run.status === "completed"
-                        ? "Завершён"
-                        : run.status === "failed"
-                        ? "Ошибка"
-                        : run.status === "running"
-                        ? "Выполняется"
-                        : "В очереди"}
-                    </span>
-                  </div>
-                  <p style={{ margin: "5px 0 0", fontSize: 12, color: "#666" }}>
-                    {new Date(run.started_at).toLocaleString("ru-RU")}
-                  </p>
-                  {run.error_message && (
-                    <p style={{ margin: "5px 0 0", fontSize: 12, color: "#dc3545" }}>
-                      {run.error_message}
+      <div className="card">
+        <div className="card-header">
+          <h3>История запусков</h3>
+        </div>
+        <div className="card-body">
+          {runs.length === 0 ? (
+            <div className="empty-state" style={{ padding: 32 }}>
+              <p style={{ margin: 0 }}>Отчёт ещё не запускался</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {runs.map((run) => (
+                <div
+                  key={run.id}
+                  className="project-card"
+                >
+                  <div className="project-card-info">
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: "50%",
+                          backgroundColor:
+                            run.status === "completed"
+                              ? "var(--success)"
+                              : run.status === "failed"
+                              ? "var(--danger)"
+                              : "var(--warning)",
+                        }}
+                      />
+                      <span style={{ fontWeight: 500 }}>
+                        {run.status === "completed"
+                          ? "Завершён"
+                          : run.status === "failed"
+                          ? "Ошибка"
+                          : run.status === "running"
+                          ? "Выполняется"
+                          : "В очереди"}
+                      </span>
+                    </div>
+                    <p className="project-card-date">
+                      {new Date(run.started_at).toLocaleString("ru-RU")}
                     </p>
+                    {run.error_message && (
+                      <p style={{ fontSize: "0.8125rem", color: "var(--danger)", marginTop: 4 }}>
+                        {run.error_message}
+                      </p>
+                    )}
+                  </div>
+                  {run.result_url && (
+                    <a
+                      href={run.result_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-success btn-sm"
+                    >
+                      Открыть в Sheets
+                    </a>
                   )}
                 </div>
-                {run.result_url && (
-                  <a
-                    href={run.result_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      padding: "8px 16px",
-                      backgroundColor: "#34A853",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 4,
-                      textDecoration: "none",
-                    }}
-                  >
-                    Открыть в Sheets
-                  </a>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Layout>
   );
 }
