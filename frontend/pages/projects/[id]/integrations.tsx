@@ -91,9 +91,51 @@ export default function IntegrationsPage() {
       }
 
       const data = await apiFetch(endpoint);
-      window.location.href = data.auth_url;
+      // Открываем авторизацию в popup — пользователь остаётся на странице, в браузере уже залогинен в Яндекс/Google
+      const width = 520;
+      const height = 640;
+      const left = Math.round((window.screen.width - width) / 2);
+      const top = Math.round((window.screen.height - height) / 2);
+      const popup = window.open(
+        data.auth_url,
+        "oauth",
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+      );
+
+      const handleMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type !== "oauth-done") return;
+        window.removeEventListener("message", handleMessage);
+        setConnecting(null);
+        loadData();
+        if (event.data.error) {
+          const msg =
+            event.data.error === "token_exchange_failed"
+              ? "Не удалось получить токен. Проверьте Redirect URI в настройках приложения и переменные на сервере."
+              : "Ошибка подключения интеграции";
+          alert(msg);
+        }
+      };
+
+      window.addEventListener("message", handleMessage);
+      const timer = setInterval(() => {
+        if (!popup || popup.closed) {
+          clearInterval(timer);
+          window.removeEventListener("message", handleMessage);
+          setConnecting(null);
+        }
+      }, 300);
     } catch (err: any) {
-      alert("Ошибка подключения интеграции");
+      let message = "Ошибка подключения интеграции";
+      if (err?.message) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed.detail) message = typeof parsed.detail === "string" ? parsed.detail : parsed.detail.join?.(", ") || message;
+        } catch {
+          if (err.message.length < 200) message = err.message;
+        }
+      }
+      alert(message);
       setConnecting(null);
     }
   }
@@ -114,12 +156,33 @@ export default function IntegrationsPage() {
     loadData();
   }, [id]);
 
+  // Если мы открыты в popup после OAuth — сообщаем родительскому окну и закрываемся
   useEffect(() => {
+    if (typeof window === "undefined" || !window.opener) return;
+    const s = success !== undefined;
+    const e = error as string | undefined;
+    if (s || e) {
+      window.opener.postMessage(
+        { type: "oauth-done", success: s, error: e ?? undefined },
+        window.location.origin
+      );
+      window.close();
+    }
+  }, [success, error]);
+
+  // Обычный редирект (если открывали авторизацию не в popup) — убираем query и показываем алерт при ошибке
+  useEffect(() => {
+    if (window.opener) return; // в popup уже обработали выше
     if (success) {
+      loadData();
       router.replace(`/projects/${id}/integrations`, undefined, { shallow: true });
     }
     if (error) {
-      alert("Ошибка подключения интеграции");
+      const msg =
+        error === "token_exchange_failed"
+          ? "Не удалось получить токен от провайдера. Проверьте Redirect URI в настройках приложения (Яндекс OAuth / Google Cloud) и переменные окружения на сервере (YANDEX_REDIRECT_URI / GOOGLE_REDIRECT_URI)."
+          : "Ошибка подключения интеграции";
+      alert(msg);
       router.replace(`/projects/${id}/integrations`, undefined, { shallow: true });
     }
   }, [success, error]);

@@ -118,6 +118,7 @@ async def yandex_callback(
                 "code": code,
                 "client_id": YANDEX_CLIENT_ID,
                 "client_secret": YANDEX_CLIENT_SECRET,
+                "redirect_uri": YANDEX_REDIRECT_URI,
             }
         )
         
