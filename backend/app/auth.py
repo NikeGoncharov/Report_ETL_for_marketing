@@ -11,7 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserLogin, UserResponse, Token, TokenRefresh
-from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, COOKIE_SECURE
+from app.config import (
+    SECRET_KEY,
+    ALGORITHM,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    COOKIE_SECURE,
+    get_allowed_registration_emails,
+)
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -140,7 +147,14 @@ async def register(
     user_data: UserCreate,
     db: AsyncSession = Depends(get_db)
 ):
-    """Register a new user."""
+    """Register a new user. When ALLOWED_REGISTRATION_EMAILS is set, only listed emails can register."""
+    allowed_emails = get_allowed_registration_emails()
+    if allowed_emails and user_data.email.lower() not in allowed_emails:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Регистрация ограничена. Доступ только для приглашённых пользователей. Обратитесь к администратору.",
+        )
+
     # Check if user already exists
     result = await db.execute(select(User).where(User.email == user_data.email))
     existing_user = result.scalar_one_or_none()
