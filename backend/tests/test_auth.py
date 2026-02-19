@@ -109,6 +109,32 @@ class TestRegisterEndpoint:
         
         assert response.status_code == 422
 
+    @pytest.mark.asyncio
+    async def test_register_disallowed_when_allow_list_set(
+        self, client: AsyncClient, monkeypatch
+    ):
+        """When ALLOWED_REGISTRATION_EMAILS is set, only listed emails can register."""
+        monkeypatch.setenv("ALLOWED_REGISTRATION_EMAILS", "allowed@example.com")
+        response = await client.post("/register", json={
+            "email": "other@example.com",
+            "password": "securepassword123",
+        })
+        assert response.status_code == 403
+        assert "ограничена" in response.json()["detail"].lower() or "restricted" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_register_allowed_when_allow_list_set(
+        self, client: AsyncClient, monkeypatch
+    ):
+        """When ALLOWED_REGISTRATION_EMAILS is set, listed email can register."""
+        monkeypatch.setenv("ALLOWED_REGISTRATION_EMAILS", "newuser@example.com, other@team.com")
+        response = await client.post("/register", json={
+            "email": "newuser@example.com",
+            "password": "securepassword123",
+        })
+        assert response.status_code == 200
+        assert response.json()["email"] == "newuser@example.com"
+
 
 class TestLoginEndpoint:
     """Tests for /login endpoint."""

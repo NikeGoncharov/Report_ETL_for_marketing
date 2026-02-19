@@ -37,3 +37,11 @@ GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/in
 
 # Frontend URL (for redirects)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+# Registration: comma-separated list of allowed emails (e.g. team@company.com).
+# If set and non-empty, only these emails can register. If not set or empty, anyone can register.
+def get_allowed_registration_emails() -> set[str]:
+    raw = os.getenv("ALLOWED_REGISTRATION_EMAILS", "").strip()
+    if not raw:
+        return set()
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}

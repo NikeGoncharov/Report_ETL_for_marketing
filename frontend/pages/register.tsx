@@ -32,7 +32,11 @@ export default function Register() {
       await authApi.login(email, password);
       router.push("/dashboard");
     } catch (err: any) {
-      if (err.message?.includes("already registered")) {
+      const status = err?.status ?? err?.statusCode;
+      const msg = typeof err?.message === "string" ? err.message : "";
+      if (status === 403 || msg?.toLowerCase().includes("ограничена") || msg?.toLowerCase().includes("restricted")) {
+        setError("Регистрация доступна только приглашённым пользователям. Обратитесь к администратору.");
+      } else if (msg?.includes("already registered")) {
         setError("Этот email уже зарегистрирован");
       } else {
         setError("Ошибка регистрации. Попробуйте ещё раз.");
