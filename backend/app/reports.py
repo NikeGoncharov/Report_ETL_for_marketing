@@ -427,7 +427,11 @@ async def run_report(
     except Exception as e:
         run.status = "failed"
         run.completed_at = datetime.utcnow()
-        run.error_message = str(e)
+        run.error_message = getattr(e, "detail", str(e))
+        if isinstance(run.error_message, list):
+            run.error_message = run.error_message[0] if run.error_message else str(e)
+        elif not isinstance(run.error_message, str):
+            run.error_message = str(e)
         await db.commit()
         await db.refresh(run)
     
