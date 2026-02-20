@@ -350,14 +350,8 @@ async def preview_report(
 ):
     """Preview report data without saving or exporting."""
     await verify_project_access(project_id, current_user, db)
-    
-    result = await run_report_pipeline(
-        request.config.model_dump(),
-        project_id,
-        current_user,
-        db
-    )
-    
+    config = request.config if isinstance(request.config, dict) else request.config.model_dump()
+    result = await run_report_pipeline(config, project_id, current_user, db)
     return result
 
 

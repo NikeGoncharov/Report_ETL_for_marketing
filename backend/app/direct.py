@@ -149,13 +149,13 @@ async def fetch_direct_stats(
         "Authorization": f"Bearer {integration.access_token}",
         "Accept-Language": "ru",
         "Content-Type": "application/json",
-        "processingMode": "auto",
+        "processingMode": "online",  # prefer immediate report; fallback to retries on 201/202
         "returnMoneyInMicros": "false",
         "skipReportHeader": "true",
         "skipReportSummary": "true",
     }
-    max_retries = 3
-    retry_delay_seconds = 5
+    max_retries = 5
+    retry_delay_seconds = 8
 
     async with httpx.AsyncClient() as client:
         for attempt in range(max_retries):

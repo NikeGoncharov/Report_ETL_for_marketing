@@ -165,7 +165,8 @@ class ReportRunResponse(BaseModel):
 # ============== Preview Schemas ==============
 
 class PreviewRequest(BaseModel):
-    config: ReportConfig
+    """Preview accepts full config as dict so frontend field selection is not stripped."""
+    config: dict  # ReportConfig-like; use .get() in pipeline to preserve direct_fields, direct_group_by, etc.
 
 
 class PreviewResponse(BaseModel):
