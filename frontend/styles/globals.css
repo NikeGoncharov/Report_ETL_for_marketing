@@ -263,7 +263,13 @@ button:disabled {
 
 .landing-hero-logo {
   height: 180px;
+  max-width: 100%;
+  width: auto;
   margin-bottom: 24px;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  object-fit: contain;
 }
 
 .landing-title {
@@ -477,6 +483,106 @@ button:disabled {
   text-decoration: underline;
 }
 
+/* Privacy policy page */
+.privacy-page {
+  min-height: 100vh;
+  background: var(--bg-color, #f8fafc);
+  color: var(--text-color, #1e293b);
+}
+
+.privacy-container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.privacy-header {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  background: #fff;
+}
+
+.privacy-header .privacy-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.privacy-logo {
+  height: 36px;
+  display: block;
+}
+
+.privacy-logo-link {
+  text-decoration: none;
+}
+
+.privacy-back {
+  color: var(--gray-600, #64748b);
+  text-decoration: none;
+  font-size: 0.9375rem;
+}
+
+.privacy-back:hover {
+  color: var(--primary, #6366f1);
+}
+
+.privacy-main {
+  padding: 40px 0 60px;
+}
+
+.privacy-title {
+  font-size: 1.75rem;
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.privacy-updated {
+  color: var(--gray-600, #64748b);
+  font-size: 0.875rem;
+  margin: 0 0 32px;
+}
+
+.privacy-section {
+  margin-bottom: 28px;
+}
+
+.privacy-section h2 {
+  font-size: 1.125rem;
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.privacy-section p,
+.privacy-section ul {
+  margin: 0 0 12px;
+  line-height: 1.6;
+  font-size: 0.9375rem;
+}
+
+.privacy-section ul {
+  padding-left: 1.5rem;
+}
+
+.privacy-section li {
+  margin-bottom: 6px;
+}
+
+.privacy-link {
+  color: var(--primary, #6366f1);
+  text-decoration: none;
+}
+
+.privacy-link:hover {
+  text-decoration: underline;
+}
+
+.privacy-footer-note {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+}
+
 /* ==================== */
 /* App Layout Styles    */
 /* ==================== */
@@ -511,7 +617,7 @@ button:disabled {
 }
 
 .sidebar-logo {
-  height: 28px;
+  height: 56px;
 }
 
 .sidebar-nav {
@@ -995,7 +1101,12 @@ tr:hover td {
   .landing-title {
     font-size: 2.5rem;
   }
-  
+
+  .landing-hero-logo {
+    height: 100px;
+    max-width: min(100%, 280px);
+  }
+
   .landing-step-arrow {
     display: none;
   }
