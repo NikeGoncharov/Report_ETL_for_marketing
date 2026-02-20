@@ -5,7 +5,6 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import httpx
 
 from app.database import get_db
 from app.models import User, Project, Integration, Report, ReportRun
@@ -16,9 +15,9 @@ from app.schemas import (
 from app.auth import get_current_user
 from app.integrations import verify_project_access, refresh_integration_token
 from app.transformations import TransformationPipeline, TransformationError
-from app.direct import get_direct_integration, call_direct_api
+from app.direct import get_direct_integration, fetch_direct_stats
 from app.metrika import get_metrika_integration, call_metrika_api
-from app.google_sheets import get_sheets_integration
+from app.google_sheets import get_sheets_integration, ExportRequest, do_export_to_sheets
 
 router = APIRouter()
 
@@ -73,94 +72,72 @@ async def fetch_source_data(
     
     if source_type == "direct":
         integration = await get_direct_integration(project_id, current_user, db)
-        campaign_ids = source_config.get("campaign_ids", [])
-        
-        # Get campaigns with stats
-        result = await call_direct_api(
-            "campaigns",
-            {
-                "SelectionCriteria": {
-                    "Ids": campaign_ids
-                } if campaign_ids else {},
-                "FieldNames": [
-                    "Id", "Name", "Status", "State",
-                ],
-            },
-            integration.access_token
+        campaign_ids = source_config.get("campaign_ids") or []
+        group_by = source_config.get("direct_group_by", "campaign")
+        direct_fields = source_config.get("direct_fields")
+        data = await fetch_direct_stats(
+            integration,
+            date_from,
+            date_to,
+            campaign_ids=campaign_ids if campaign_ids else None,
+            group_by=group_by,
+            direct_fields=direct_fields,
         )
-        
-        campaigns = result.get("Campaigns", [])
-        
-        # Transform to flat data
-        data = []
-        for c in campaigns:
-            row = {
-                "campaign_id": c["Id"],
-                "campaign_name": c["Name"],
-                "status": c.get("Status"),
-                "state": c.get("State"),
-                # Note: For real stats, you'd need to call the Reports API
-                # This is simplified for MVP
-                "impressions": 0,
-                "clicks": 0,
-                "cost": 0,
-            }
-            data.append(row)
-        
         return data
     
     elif source_type == "metrika":
         integration = await get_metrika_integration(project_id, current_user, db)
         counter_id = source_config.get("counter_id")
         goals = source_config.get("goals", [])
-        
+        config_metrics = source_config.get("metrics")
+        config_dimensions = source_config.get("dimensions")
+
         if not counter_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="counter_id is required for Metrika source"
             )
-        
-        # Build metrics
-        metrics = "ym:s:visits,ym:s:users,ym:s:bounceRate"
+
+        metrics = config_metrics if (config_metrics and len(config_metrics) > 0) else ["ym:s:visits", "ym:s:users", "ym:s:bounceRate"]
         if goals:
-            goal_metrics = [f"ym:s:goal{g}reaches" for g in goals]
-            metrics += "," + ",".join(goal_metrics)
-        
-        # Get UTM data for potential join with Direct
+            metrics = list(metrics) + [f"ym:s:goal{g}reaches" for g in goals]
+        metrics_str = ",".join(metrics) if isinstance(metrics, list) else metrics
+
+        dimensions = config_dimensions if (config_dimensions and len(config_dimensions) > 0) else ["ym:s:UTMSource", "ym:s:UTMCampaign"]
+        dimensions_str = ",".join(dimensions) if isinstance(dimensions, list) else dimensions
+
         result = await call_metrika_api(
             "stat/v1/data",
             {
                 "ids": counter_id,
                 "date1": date_from,
                 "date2": date_to,
-                "metrics": metrics,
-                "dimensions": "ym:s:UTMSource,ym:s:UTMCampaign",
+                "metrics": metrics_str,
+                "dimensions": dimensions_str,
                 "accuracy": "full",
                 "limit": 10000,
             },
-            integration.access_token
+            integration.access_token,
         )
-        
+
         data_result = result.get("data", [])
         query = result.get("query", {})
         metric_names = [m.replace("ym:s:", "") for m in query.get("metrics", [])]
-        
+        dimension_keys = query.get("dimensions", [])
+
         data = []
         for item in data_result:
             dims = item.get("dimensions", [])
             mets = item.get("metrics", [])
-            
-            row = {
-                "utm_source": dims[0].get("name") if dims else None,
-                "utm_campaign": dims[1].get("name") if len(dims) > 1 else None,
-            }
-            
+            row = {}
+            for i, dim in enumerate(dims):
+                key = dimension_keys[i].replace("ym:s:", "").replace(":", "_") if i < len(dimension_keys) else f"dim_{i}"
+                row[key] = dim.get("name")
             for i, m in enumerate(mets):
                 metric_name = metric_names[i] if i < len(metric_names) else f"metric_{i}"
                 row[metric_name] = m
-            
             data.append(row)
-        
+
         return data
     
     else:
@@ -188,9 +165,22 @@ async def run_report_pipeline(
         source_data = await fetch_source_data(
             source_config, period, project_id, current_user, db
         )
+        # Per-source transformations
+        source_transformations = source_config.get("source_transformations") or []
+        if source_transformations:
+            pipeline = TransformationPipeline(source_transformations)
+            try:
+                single_source_data = {source_id: source_data}
+                single_source_data = pipeline.run(single_source_data)
+                source_data = single_source_data.get(source_id, source_data)
+            except TransformationError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Source '{source_id}' transformation error: {e}",
+                )
         data[source_id] = source_data
-    
-    # Apply transformations
+
+    # Apply global transformations
     if transformations:
         pipeline = TransformationPipeline(transformations)
         try:
@@ -416,30 +406,21 @@ async def run_report(
         export_config = report.config.get("export", {})
         
         if export_config.get("type") == "google_sheets":
-            # Get Google Sheets integration
             sheets_integration = await get_sheets_integration(project_id, current_user, db)
-            
-            # Export to sheets
-            from app.google_sheets import ExportRequest
-            
+            spreadsheet_id = export_config.get("spreadsheet_id")
+            if spreadsheet_id is not None and isinstance(spreadsheet_id, str) and not spreadsheet_id.strip():
+                spreadsheet_id = None
             export_request = ExportRequest(
-                spreadsheet_id=export_config.get("spreadsheet_id"),
-                sheet_name=export_config.get("sheet_name", report.name),
+                spreadsheet_id=spreadsheet_id,
+                sheet_name=export_config.get("sheet_name") or report.name,
                 title=f"{report.name} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
                 columns=data_result["columns"],
-                data=data_result["data"]
+                data=data_result["data"],
             )
-            
-            # Make the export request
-            async with httpx.AsyncClient() as client:
-                # We'll call our own sheets export endpoint
-                # In production, you might want to inline this logic
-                pass
-            
-            # For now, mark as completed with placeholder
+            export_result = await do_export_to_sheets(sheets_integration, export_request)
             run.status = "completed"
             run.completed_at = datetime.utcnow()
-            run.result_url = f"https://docs.google.com/spreadsheets/d/{export_config.get('spreadsheet_id', 'new')}"
+            run.result_url = export_result.get("spreadsheet_url") or ""
         else:
             # No export configured, just mark as completed
             run.status = "completed"

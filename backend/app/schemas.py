@@ -77,10 +77,18 @@ class ReportSourceConfig(BaseModel):
     campaign_ids: Optional[List[int]] = None
     counter_id: Optional[int] = None
     goals: Optional[List[int]] = None
+    # Direct: optional field selection and grouping
+    direct_fields: Optional[List[str]] = None
+    direct_group_by: Optional[str] = None  # 'day' | 'campaign'
+    # Metrika: optional metrics and dimensions (API names, e.g. ym:s:visits)
+    metrics: Optional[List[str]] = None
+    dimensions: Optional[List[str]] = None
+    # Per-source transformations (applied before global merge)
+    source_transformations: Optional[List["TransformationConfig"]] = None
 
 
 class TransformationConfig(BaseModel):
-    type: str  # 'extract', 'group_by', 'join', 'rename'
+    type: str  # 'extract', 'group_by', 'join', 'rename', 'filter', 'calculate', 'sort'
     source: Optional[str] = None
     left: Optional[str] = None
     right: Optional[str] = None
@@ -92,6 +100,9 @@ class TransformationConfig(BaseModel):
     on: Optional[str] = None
     how: Optional[str] = None
     mapping: Optional[dict] = None  # for rename
+    operator: Optional[str] = None  # for filter
+    value: Optional[Any] = None  # for filter
+    formula: Optional[str] = None  # for calculate
 
 
 class ExportConfig(BaseModel):

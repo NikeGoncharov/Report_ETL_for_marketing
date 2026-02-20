@@ -189,18 +189,14 @@ async def create_spreadsheet(
         }
 
 
-@router.post("/export")
-async def export_to_sheets(
-    project_id: int,
-    request: ExportRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Export data to Google Sheets."""
-    integration = await get_sheets_integration(project_id, current_user, db)
-    
+async def do_export_to_sheets(integration: Integration, request: ExportRequest) -> dict:
+    """
+    Perform export to Google Sheets. Returns dict with spreadsheet_url, spreadsheet_id, etc.
+    Raises HTTPException on API errors.
+    """
     spreadsheet_id = request.spreadsheet_id
-    
+    spreadsheet_url = ""
+
     async with httpx.AsyncClient() as client:
         # Create new spreadsheet if needed
         if not spreadsheet_id:
@@ -336,3 +332,15 @@ async def export_to_sheets(
             "updated_cells": update_data.get("updatedCells", 0),
             "updated_rows": update_data.get("updatedRows", 0),
         }
+
+
+@router.post("/export")
+async def export_to_sheets(
+    project_id: int,
+    request: ExportRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export data to Google Sheets."""
+    integration = await get_sheets_integration(project_id, current_user, db)
+    return await do_export_to_sheets(integration, request)

@@ -1,7 +1,6 @@
 """Yandex.Direct API integration."""
 from datetime import datetime, date
-from typing import List, Optional
-import json
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select
@@ -89,6 +88,124 @@ async def call_direct_api(
         return data.get("result", {})
 
 
+DIRECT_REPORT_FIELDS_WHITELIST = {
+    "CampaignId", "CampaignName", "Date",
+    "Impressions", "Clicks", "Cost", "Ctr", "AvgCpc",
+    "Conversions", "ConversionRate", "CostPerConversion",
+}
+
+
+async def fetch_direct_stats(
+    integration: Integration,
+    date_from: str,
+    date_to: str,
+    campaign_ids: Optional[List[int]] = None,
+    group_by: str = "campaign",
+    direct_fields: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Fetch Direct statistics for the given period.
+    Returns list of row dicts (lowercase keys). Uses Reports API when possible,
+    fallback to campaigns with Statistics on 201/202 or non-200.
+    """
+    selection_criteria: Dict[str, Any] = {
+        "DateFrom": date_from,
+        "DateTo": date_to,
+    }
+    if campaign_ids:
+        selection_criteria["Filter"] = [{
+            "Field": "CampaignId",
+            "Operator": "IN",
+            "Values": campaign_ids,
+        }]
+
+    if direct_fields:
+        field_names = [f for f in direct_fields if f in DIRECT_REPORT_FIELDS_WHITELIST]
+    else:
+        field_names = []
+    if not field_names:
+        field_names = [
+            "CampaignId", "CampaignName",
+            "Impressions", "Clicks", "Cost", "Ctr", "AvgCpc",
+            "Conversions", "ConversionRate", "CostPerConversion",
+        ]
+    if group_by == "day" and "Date" not in field_names:
+        field_names.insert(0, "Date")
+
+    params = {
+        "SelectionCriteria": selection_criteria,
+        "FieldNames": field_names,
+        "ReportName": f"Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        "ReportType": "CAMPAIGN_PERFORMANCE_REPORT",
+        "DateRangeType": "CUSTOM_DATE",
+        "Format": "TSV",
+        "IncludeVAT": "YES",
+        "IncludeDiscount": "NO",
+    }
+
+    url = f"{DIRECT_API_URL}/reports"
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            url,
+            json={"params": params},
+            headers={
+                "Authorization": f"Bearer {integration.access_token}",
+                "Accept-Language": "ru",
+                "Content-Type": "application/json",
+                "processingMode": "auto",
+                "returnMoneyInMicros": "false",
+                "skipReportHeader": "true",
+                "skipReportSummary": "true",
+            },
+            timeout=60.0,
+        )
+
+        if response.status_code in (201, 202):
+            # Report is being generated; use fallback
+            pass
+        elif response.status_code == 200 and response.text.strip():
+            lines = response.text.strip().split("\n")
+            if len(lines) >= 2:
+                headers = lines[0].split("\t")
+                data = []
+                for line in lines[1:]:
+                    values = line.split("\t")
+                    row = {}
+                    for i, header in enumerate(headers):
+                        if i < len(values):
+                            value = values[i]
+                            if header in ["Impressions", "Clicks", "Conversions"]:
+                                row[header.lower()] = int(value) if value else 0
+                            elif header in ["Cost", "Ctr", "AvgCpc", "ConversionRate", "CostPerConversion"]:
+                                row[header.lower()] = float(value) if value else 0.0
+                            else:
+                                row[header.lower()] = value
+                    data.append(row)
+                return data
+
+    # Fallback: campaigns with Statistics (campaign-level aggregate)
+    criteria = {"Ids": campaign_ids} if campaign_ids else {}
+    campaigns_result = await call_direct_api(
+        "campaigns",
+        {
+            "SelectionCriteria": criteria,
+            "FieldNames": ["Id", "Name", "Statistics"],
+        },
+        integration.access_token,
+    )
+    campaigns = campaigns_result.get("Campaigns", [])
+    return [
+        {
+            "campaign_id": c["Id"],
+            "campaign_name": c["Name"],
+            "impressions": c.get("Statistics", {}).get("Impressions", 0),
+            "clicks": c.get("Statistics", {}).get("Clicks", 0),
+            "cost": c.get("Statistics", {}).get("Cost", 0),
+        }
+        for c in campaigns
+    ]
+
+
 @router.get("/campaigns")
 async def get_campaigns(
     project_id: int,
@@ -135,130 +252,11 @@ async def get_stats(
     campaign_ids: Optional[str] = Query(None, description="Comma-separated campaign IDs"),
     group_by: str = Query("day", description="Group by: day, week, month, campaign"),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Get statistics from Yandex.Direct."""
     integration = await get_direct_integration(project_id, current_user, db)
-    
-    # Build selection criteria
-    selection_criteria = {
-        "DateFrom": date_from,
-        "DateTo": date_to,
-    }
-    
-    if campaign_ids:
-        selection_criteria["Filter"] = [{
-            "Field": "CampaignId",
-            "Operator": "IN",
-            "Values": [int(id.strip()) for id in campaign_ids.split(",")]
-        }]
-    
-    # Determine report type
-    report_type = "CAMPAIGN_PERFORMANCE_REPORT"
-    
-    # Build field names based on grouping
-    field_names = [
-        "CampaignId", "CampaignName",
-        "Impressions", "Clicks", "Cost", "Ctr", "AvgCpc",
-        "Conversions", "ConversionRate", "CostPerConversion"
-    ]
-    
-    if group_by == "day":
-        field_names.insert(0, "Date")
-    
-    # For Direct API v5, we need to use Reports service
-    # Simplified version - using campaigns stats
-    params = {
-        "SelectionCriteria": selection_criteria,
-        "FieldNames": field_names,
-        "ReportName": f"Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        "ReportType": report_type,
-        "DateRangeType": "CUSTOM_DATE",
-        "Format": "TSV",
-        "IncludeVAT": "YES",
-        "IncludeDiscount": "NO",
-    }
-    
-    # Call reports API
-    url = f"{DIRECT_API_URL}/reports"
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            url,
-            json={"params": params},
-            headers={
-                "Authorization": f"Bearer {integration.access_token}",
-                "Accept-Language": "ru",
-                "Content-Type": "application/json",
-                "processingMode": "auto",
-                "returnMoneyInMicros": "false",
-                "skipReportHeader": "true",
-                "skipReportSummary": "true",
-            },
-            timeout=60.0
-        )
-        
-        if response.status_code == 201 or response.status_code == 202:
-            # Report is being generated, need to wait
-            # For simplicity, we'll return a placeholder
-            return {
-                "status": "processing",
-                "message": "Report is being generated. Please try again in a few seconds."
-            }
-        
-        if response.status_code != 200:
-            # Try to get campaigns with basic stats instead
-            campaigns_result = await call_direct_api(
-                "campaigns",
-                {
-                    "SelectionCriteria": {},
-                    "FieldNames": ["Id", "Name", "Statistics"],
-                },
-                integration.access_token
-            )
-            
-            campaigns = campaigns_result.get("Campaigns", [])
-            
-            return {
-                "columns": ["campaign_id", "campaign_name", "impressions", "clicks", "cost"],
-                "data": [
-                    {
-                        "campaign_id": c["Id"],
-                        "campaign_name": c["Name"],
-                        "impressions": c.get("Statistics", {}).get("Impressions", 0),
-                        "clicks": c.get("Statistics", {}).get("Clicks", 0),
-                        "cost": c.get("Statistics", {}).get("Cost", 0),
-                    }
-                    for c in campaigns
-                ],
-                "row_count": len(campaigns)
-            }
-        
-        # Parse TSV response
-        lines = response.text.strip().split("\n")
-        if len(lines) < 2:
-            return {"columns": field_names, "data": [], "row_count": 0}
-        
-        headers = lines[0].split("\t")
-        data = []
-        
-        for line in lines[1:]:
-            values = line.split("\t")
-            row = {}
-            for i, header in enumerate(headers):
-                if i < len(values):
-                    # Convert numeric fields
-                    value = values[i]
-                    if header in ["Impressions", "Clicks", "Conversions"]:
-                        row[header.lower()] = int(value) if value else 0
-                    elif header in ["Cost", "Ctr", "AvgCpc", "ConversionRate", "CostPerConversion"]:
-                        row[header.lower()] = float(value) if value else 0.0
-                    else:
-                        row[header.lower()] = value
-            data.append(row)
-        
-        return {
-            "columns": [h.lower() for h in headers],
-            "data": data,
-            "row_count": len(data)
-        }
+    ids_list = [int(x.strip()) for x in campaign_ids.split(",")] if campaign_ids else None
+    data = await fetch_direct_stats(integration, date_from, date_to, ids_list, group_by)
+    columns = list(data[0].keys()) if data else []
+    return {"columns": columns, "data": data, "row_count": len(data)}

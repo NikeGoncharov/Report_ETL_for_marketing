@@ -607,7 +607,7 @@ button:disabled {
 
 .sidebar-header {
   display: block;
-  padding: 24px;
+  padding: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   transition: opacity var(--transition);
 }
@@ -617,7 +617,10 @@ button:disabled {
 }
 
 .sidebar-logo {
-  height: 112px;
+  height: 80px;
+  display: block;
+  max-width: 100%;
+  object-fit: contain;
 }
 
 .sidebar-nav {
