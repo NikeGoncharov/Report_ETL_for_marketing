@@ -147,6 +147,9 @@ export default function LandingPage() {
           <div className="landing-footer-content">
             <img src="/logo-white.png" alt="RePort" className="landing-logo-small" />
             <p>© 2026 Report. ETL-платформа для маркетинга.</p>
+            <Link href="/privacy" className="landing-footer-link">
+              Политика конфиденциальности
+            </Link>
           </div>
         </div>
       </footer>
