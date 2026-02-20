@@ -1,4 +1,5 @@
 """Yandex.Direct API integration."""
+import asyncio
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any
 
@@ -144,44 +145,53 @@ async def fetch_direct_stats(
     }
 
     url = f"{DIRECT_API_URL}/reports"
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            url,
-            json={"params": params},
-            headers={
-                "Authorization": f"Bearer {integration.access_token}",
-                "Accept-Language": "ru",
-                "Content-Type": "application/json",
-                "processingMode": "auto",
-                "returnMoneyInMicros": "false",
-                "skipReportHeader": "true",
-                "skipReportSummary": "true",
-            },
-            timeout=60.0,
-        )
+    headers = {
+        "Authorization": f"Bearer {integration.access_token}",
+        "Accept-Language": "ru",
+        "Content-Type": "application/json",
+        "processingMode": "auto",
+        "returnMoneyInMicros": "false",
+        "skipReportHeader": "true",
+        "skipReportSummary": "true",
+    }
+    max_retries = 3
+    retry_delay_seconds = 5
 
-        if response.status_code in (201, 202):
-            # Report is being generated; use fallback
-            pass
-        elif response.status_code == 200 and response.text.strip():
-            lines = response.text.strip().split("\n")
-            if len(lines) >= 2:
-                headers = lines[0].split("\t")
-                data = []
-                for line in lines[1:]:
-                    values = line.split("\t")
-                    row = {}
-                    for i, header in enumerate(headers):
-                        if i < len(values):
-                            value = values[i]
-                            if header in ["Impressions", "Clicks", "Conversions"]:
-                                row[header.lower()] = int(value) if value else 0
-                            elif header in ["Cost", "Ctr", "AvgCpc", "ConversionRate", "CostPerConversion"]:
-                                row[header.lower()] = float(value) if value else 0.0
-                            else:
-                                row[header.lower()] = value
-                    data.append(row)
-                return data
+    async with httpx.AsyncClient() as client:
+        for attempt in range(max_retries):
+            response = await client.post(
+                url,
+                json={"params": params},
+                headers=headers,
+                timeout=60.0,
+            )
+
+            if response.status_code == 200 and response.text.strip():
+                lines = response.text.strip().split("\n")
+                if len(lines) >= 2:
+                    report_headers = lines[0].split("\t")
+                    data = []
+                    for line in lines[1:]:
+                        values = line.split("\t")
+                        row = {}
+                        for i, header in enumerate(report_headers):
+                            if i < len(values):
+                                value = values[i]
+                                if header in ["Impressions", "Clicks", "Conversions"]:
+                                    row[header.lower()] = int(value) if value else 0
+                                elif header in ["Cost", "Ctr", "AvgCpc", "ConversionRate", "CostPerConversion"]:
+                                    row[header.lower()] = float(value) if value else 0.0
+                                else:
+                                    row[header.lower()] = value
+                        data.append(row)
+                    return data
+
+            if response.status_code in (201, 202):
+                # Report is being generated; wait and retry with same params
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay_seconds)
+                    continue
+            break
 
     # Fallback: campaigns with Statistics (campaign-level aggregate)
     criteria = {"Ids": campaign_ids} if campaign_ids else {}
