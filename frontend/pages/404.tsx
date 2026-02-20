@@ -22,7 +22,7 @@ export default function Custom404() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #2563eb;
+          background: var(--gray-900, #111827);
           padding: 24px;
         }
         .not-found-content {
@@ -44,15 +44,17 @@ export default function Custom404() {
         .not-found-link {
           display: inline-block;
           padding: 12px 24px;
-          background: #fff;
-          color: #2563eb;
+          background: transparent;
+          color: #fff;
           text-decoration: none;
           border-radius: 8px;
           font-weight: 600;
+          border: 1px solid rgba(255, 255, 255, 0.6);
           transition: opacity 0.2s;
         }
         .not-found-link:hover {
           opacity: 0.9;
+          border-color: #fff;
         }
       `}</style>
     </>
