@@ -237,9 +237,37 @@ async def do_export_to_sheets(integration: Integration, request: ExportRequest) 
             )
             
             if sheets_response.status_code != 200:
+                err_body = sheets_response.text or ""
+                err_json = None
+                try:
+                    if err_body.strip().startswith("{"):
+                        err_json = sheets_response.json()
+                except Exception:
+                    pass
+                google_msg = ""
+                if err_json and isinstance(err_json, dict):
+                    err_obj = err_json.get("error", err_json)
+                    if isinstance(err_obj, dict):
+                        google_msg = err_obj.get("message") or err_obj.get("status") or ""
+                    if not google_msg:
+                        google_msg = str(err_obj)[:300]
+                if not google_msg:
+                    google_msg = err_body[:500] if err_body else "нет тела ответа"
+                id_preview = f"{spreadsheet_id[:20]}..." if len(spreadsheet_id) > 20 else spreadsheet_id
+                extra = f" ID таблицы: {id_preview} (длина {len(spreadsheet_id)}). Ответ Google: {google_msg}"
+                if sheets_response.status_code == 403:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            "Нет доступа к таблице (403). "
+                            "Убедитесь, что к таблице имеет доступ тот же аккаунт Google, что в интеграциях. "
+                            "Либо включите «Создать новую таблицу». "
+                            f"Детали: {extra}"
+                        ),
+                    )
                 raise HTTPException(
                     status_code=sheets_response.status_code,
-                    detail=f"Spreadsheet not found or not accessible"
+                    detail=f"Таблица недоступна ({sheets_response.status_code}). {extra}"
                 )
             
             sheets_data = sheets_response.json()
