@@ -402,17 +402,19 @@ async def run_report(
             db
         )
         
-        # Get export config
-        export_config = report.config.get("export", {})
+        # Get export config (default to google_sheets so old reports still export)
+        export_config = report.config.get("export") or {}
+        export_type = export_config.get("type") or "google_sheets"
         
-        if export_config.get("type") == "google_sheets":
+        if export_type == "google_sheets":
             sheets_integration = await get_sheets_integration(project_id, current_user, db)
             spreadsheet_id = export_config.get("spreadsheet_id")
             if spreadsheet_id is not None and isinstance(spreadsheet_id, str) and not spreadsheet_id.strip():
                 spreadsheet_id = None
+            sheet_name = (export_config.get("sheet_name") or report.name or "Report").strip() or "Report"
             export_request = ExportRequest(
                 spreadsheet_id=spreadsheet_id,
-                sheet_name=export_config.get("sheet_name") or report.name,
+                sheet_name=sheet_name,
                 title=f"{report.name} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
                 columns=data_result["columns"],
                 data=data_result["data"],
@@ -422,7 +424,6 @@ async def run_report(
             run.completed_at = datetime.utcnow()
             run.result_url = export_result.get("spreadsheet_url") or ""
         else:
-            # No export configured, just mark as completed
             run.status = "completed"
             run.completed_at = datetime.utcnow()
         

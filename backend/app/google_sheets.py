@@ -1,6 +1,7 @@
 """Google Sheets API integration."""
 from typing import List, Optional, Any
 from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select
@@ -291,12 +292,15 @@ async def do_export_to_sheets(integration: Integration, request: ExportRequest) 
                 row_values.append(value)
             values.append(row_values)
         
-        # Clear existing data and write new data
-        range_name = f"'{request.sheet_name}'!A1"
+        # A1 range for the sheet (quote sheet name if it could contain spaces/special chars)
+        range_a1 = f"'{request.sheet_name}'!A1"
+        # URL-encode range for the path (only the range part; :clear is the endpoint suffix)
+        range_clear_encoded = quote(request.sheet_name, safe="")
+        range_a1_encoded = quote(range_a1, safe="")
         
         # Clear the sheet first
         clear_response = await client.post(
-            f"{SHEETS_API_URL}/{spreadsheet_id}/values/{request.sheet_name}:clear",
+            f"{SHEETS_API_URL}/{spreadsheet_id}/values/{range_clear_encoded}:clear",
             json={},
             headers={
                 "Authorization": f"Bearer {integration.access_token}",
@@ -305,9 +309,15 @@ async def do_export_to_sheets(integration: Integration, request: ExportRequest) 
             timeout=30.0
         )
         
+        if clear_response.status_code != 200:
+            raise HTTPException(
+                status_code=clear_response.status_code,
+                detail=f"Failed to clear sheet: {clear_response.text}"
+            )
+        
         # Write data
         update_response = await client.put(
-            f"{SHEETS_API_URL}/{spreadsheet_id}/values/{range_name}",
+            f"{SHEETS_API_URL}/{spreadsheet_id}/values/{range_a1_encoded}",
             params={"valueInputOption": "USER_ENTERED"},
             json={"values": values},
             headers={

@@ -63,11 +63,16 @@ export default function ReportPage() {
     setRunning(true);
 
     try {
-      await apiFetch(`/projects/${projectId}/reports/${reportIdNum}/run`, {
+      const run = await apiFetch<ReportRun>(`/projects/${projectId}/reports/${reportIdNum}/run`, {
         method: "POST",
       });
       const runsData = await apiFetch(`/projects/${projectId}/reports/${reportIdNum}/runs`);
       setRuns(runsData);
+      if (run.status === "failed" && run.error_message) {
+        alert("Запуск завершился с ошибкой: " + run.error_message);
+      } else if (run.status === "completed" && run.result_url) {
+        window.open(run.result_url, "_blank");
+      }
     } catch (err: any) {
       alert("Ошибка запуска: " + (err.message || "Unknown error"));
     } finally {
