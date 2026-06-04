@@ -85,7 +85,7 @@ export default function ProjectPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid">
+      <div className="stats-grid compact-stats-grid">
         <div className="stat-card">
           <div className="stat-card-icon" style={{ background: "var(--success-light)" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2">
@@ -110,10 +110,22 @@ export default function ProjectPage() {
           <div className="stat-card-value">{reports.length}</div>
           <div className="stat-card-label">Отчётов</div>
         </div>
+        <div className="stat-card">
+          <div className="stat-card-icon" style={{ background: "var(--warning-light)" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2">
+              <path d="M8 12h8" />
+              <path d="M8 8h8" />
+              <path d="M8 16h5" />
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+            </svg>
+          </div>
+          <div className="stat-card-value">{integrations.filter((i) => i.type === "yandex_direct" || i.type === "yandex_metrika").length}</div>
+          <div className="stat-card-label">Источников данных</div>
+        </div>
       </div>
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 32 }}>
+      <div className="actions-row" style={{ marginBottom: 20 }}>
         <button
           className="btn btn-primary"
           onClick={() => router.push(`/projects/${id}/integrations`)}
@@ -153,16 +165,12 @@ export default function ProjectPage() {
               </p>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="integration-pill-grid">
               {integrations.map((integration) => (
-                <div key={integration.id} className="integration-card connected">
-                  <div className="integration-card-header">
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div className="integration-status active" />
-                      <h3 style={{ margin: 0 }}>
-                        {INTEGRATION_LABELS[integration.type] || integration.type}
-                      </h3>
-                    </div>
+                <div key={integration.id} className="integration-pill">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div className="integration-status active" />
+                    <h3 style={{ margin: 0 }}>{INTEGRATION_LABELS[integration.type] || integration.type}</h3>
                   </div>
                   {integration.account_info?.name && (
                     <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--gray-600)" }}>
@@ -193,7 +201,7 @@ export default function ProjectPage() {
               </p>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {reports.map((report) => (
                 <div key={report.id} className="project-card">
                   <div className="project-card-info">
@@ -202,12 +210,20 @@ export default function ProjectPage() {
                       Создан: {new Date(report.created_at).toLocaleDateString("ru-RU")}
                     </p>
                   </div>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => router.push(`/projects/${id}/reports/${report.id}`)}
-                  >
-                    Открыть
-                  </button>
+                  <div className="project-card-actions">
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => router.push(`/projects/${id}/reports/${report.id}/edit`)}
+                    >
+                      Изменить
+                    </button>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => router.push(`/projects/${id}/reports/${report.id}`)}
+                    >
+                      Открыть
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

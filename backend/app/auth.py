@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -23,6 +24,7 @@ from app.config import (
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger(__name__)
 
 # Cookie settings
 ACCESS_TOKEN_COOKIE = "access_token"
@@ -125,6 +127,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
         secure=COOKIE_SECURE,
         samesite="lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
     )
     response.set_cookie(
         key=REFRESH_TOKEN_COOKIE,
@@ -133,13 +136,14 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
         secure=COOKIE_SECURE,
         samesite="lax",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/",
     )
 
 
 def clear_auth_cookies(response: Response):
     """Clear authentication cookies."""
-    response.delete_cookie(ACCESS_TOKEN_COOKIE)
-    response.delete_cookie(REFRESH_TOKEN_COOKIE)
+    response.delete_cookie(ACCESS_TOKEN_COOKIE, path="/")
+    response.delete_cookie(REFRESH_TOKEN_COOKIE, path="/")
 
 
 @router.post("/register", response_model=UserResponse)
@@ -188,6 +192,7 @@ async def login(
     user = result.scalar_one_or_none()
     
     if not user or not verify_password(user_data.password, user.password_hash):
+        logger.warning("Failed login attempt for email=%s", user_data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
@@ -219,6 +224,7 @@ async def refresh_tokens(
         refresh_token = request.cookies.get(REFRESH_TOKEN_COOKIE)
     
     if not refresh_token:
+        logger.info("Refresh requested without token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token required"

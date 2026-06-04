@@ -1,6 +1,7 @@
 """Yandex.Metrika API integration."""
 from datetime import datetime, date, timedelta
 from typing import List, Optional
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select
@@ -13,6 +14,7 @@ from app.auth import get_current_user
 from app.integrations import verify_project_access, refresh_integration_token
 
 router = APIRouter(prefix="/metrika")
+logger = logging.getLogger(__name__)
 
 # Yandex.Metrika API URL
 METRIKA_API_URL = "https://api-metrika.yandex.net"
@@ -45,6 +47,7 @@ async def get_metrika_integration(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Failed to refresh Yandex.Metrika token. Please reconnect."
         )
+    integration.access_token = access_token
     
     return integration
 
@@ -71,9 +74,14 @@ async def call_metrika_api(
             error_detail = response.text
             try:
                 error_json = response.json()
-                error_detail = error_json.get("message", error_detail)
-            except:
+                if "errors" in error_json and isinstance(error_json["errors"], list):
+                    first = error_json["errors"][0] if error_json["errors"] else {}
+                    error_detail = first.get("message") or first.get("error") or error_detail
+                else:
+                    error_detail = error_json.get("message", error_detail)
+            except Exception:
                 pass
+            logger.warning("Metrika API error endpoint=%s status=%s detail=%s", endpoint, response.status_code, error_detail)
             
             raise HTTPException(
                 status_code=response.status_code,

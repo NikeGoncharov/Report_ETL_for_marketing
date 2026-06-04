@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=report
-Group=report
-WorkingDirectory=/home/report/RePort/frontend
+User=user
+Group=user
+WorkingDirectory=/home/user/RePort/frontend
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10

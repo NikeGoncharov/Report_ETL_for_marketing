@@ -4,11 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=report
-Group=report
-WorkingDirectory=/home/report/RePort/backend
-Environment="PATH=/home/report/venv/bin"
-ExecStart=/home/report/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+User=user
+Group=user
+WorkingDirectory=/home/user/RePort/backend
+Environment="PATH=/home/user/venv/bin"
+ExecStart=/home/user/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=10
 

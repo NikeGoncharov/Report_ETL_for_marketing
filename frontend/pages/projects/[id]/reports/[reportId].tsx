@@ -150,6 +150,9 @@ export default function ReportPage() {
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 12, marginBottom: 32 }}>
+        <Link href={`/projects/${id}/reports/${reportId}/edit`} className="btn btn-secondary">
+          Редактировать
+        </Link>
         <button
           className="btn btn-success"
           onClick={handleRun}

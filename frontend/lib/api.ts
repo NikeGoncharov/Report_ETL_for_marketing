@@ -24,8 +24,7 @@ export async function apiFetch<T = any>(
   });
 
   // Handle 401 - try to refresh token
-  // Exclude /me from redirect (used for auth check on landing page)
-  if (res.status === 401 && path !== "/login" && path !== "/refresh" && path !== "/register" && path !== "/me") {
+  if (res.status === 401 && path !== "/login" && path !== "/refresh" && path !== "/register") {
     const refreshed = await refreshToken();
     if (refreshed) {
       // Retry the original request
@@ -127,5 +126,25 @@ export const projectsApi = {
   delete: (id: number) =>
     apiFetch(`/projects/${id}`, {
       method: "DELETE",
+    }),
+};
+
+export const reportsApi = {
+  list: (projectId: number) => apiFetch(`/projects/${projectId}/reports`),
+  get: (projectId: number, reportId: number) =>
+    apiFetch(`/projects/${projectId}/reports/${reportId}`),
+  create: (projectId: number, payload: { name: string; config: Record<string, unknown> }) =>
+    apiFetch(`/projects/${projectId}/reports`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  update: (
+    projectId: number,
+    reportId: number,
+    payload: { name?: string; config?: Record<string, unknown> },
+  ) =>
+    apiFetch(`/projects/${projectId}/reports/${reportId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
     }),
 };

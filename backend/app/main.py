@@ -1,6 +1,9 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from time import perf_counter
+import logging
 
 from app.auth import router as auth_router
 from app.projects import router as projects_router
@@ -11,6 +14,11 @@ from app.google_sheets import router as sheets_router
 from app.reports import router as reports_router
 from app.database import init_db
 from app.config import FRONTEND_URL
+from app.logging_config import configure_logging
+
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -36,6 +44,21 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+class RequestLogMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        started_at = perf_counter()
+        response = await call_next(request)
+        elapsed_ms = int((perf_counter() - started_at) * 1000)
+        logger.info(
+            "%s %s -> %s (%sms)",
+            request.method,
+            request.url.path,
+            response.status_code,
+            elapsed_ms,
+        )
+        return response
+
 # CORS configuration
 origins = [
     "http://localhost:3000",
@@ -49,6 +72,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLogMiddleware)
 
 # Include routers
 app.include_router(auth_router, tags=["Authentication"])

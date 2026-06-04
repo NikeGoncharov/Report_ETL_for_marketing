@@ -1,8 +1,8 @@
 :root {
   /* Colors */
-  --primary: #0070f3;
-  --primary-hover: #0060df;
-  --primary-light: rgba(0, 112, 243, 0.1);
+  --primary: #2d73ff;
+  --primary-hover: #205ce0;
+  --primary-light: rgba(45, 115, 255, 0.12);
   
   --success: #10b981;
   --success-light: rgba(16, 185, 129, 0.1);
@@ -27,20 +27,20 @@
   --gray-900: #111827;
   
   /* Sidebar colors (dark theme) */
-  --sidebar-bg: #1e2530;
-  --sidebar-hover: #2a3441;
-  --sidebar-active: #3b4a5a;
+  --sidebar-bg: #161f2c;
+  --sidebar-hover: #202b3b;
+  --sidebar-active: #29384d;
   --sidebar-text: #94a3b8;
   --sidebar-text-active: #ffffff;
   
   /* Layout */
-  --border-radius: 8px;
-  --border-radius-lg: 12px;
+  --border-radius: 10px;
+  --border-radius-lg: 14px;
   --border-radius-xl: 16px;
   
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 6px 20px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 18px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   
   --transition: 0.2s ease;
@@ -676,8 +676,8 @@ button:disabled {
 
 .main-header {
   background: var(--white);
-  border-bottom: 1px solid var(--gray-200);
-  padding: 20px 32px;
+  border-bottom: 1px solid var(--gray-100);
+  padding: 16px 24px;
   position: sticky;
   top: 0;
   z-index: 40;
@@ -689,7 +689,7 @@ button:disabled {
 }
 
 .main-body {
-  padding: 32px;
+  padding: 20px 24px;
 }
 
 /* ==================== */
@@ -705,7 +705,7 @@ button:disabled {
 }
 
 .card-header {
-  padding: 20px 24px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--gray-100);
   display: flex;
   align-items: center;
@@ -718,7 +718,7 @@ button:disabled {
 }
 
 .card-body {
-  padding: 24px;
+  padding: 16px;
 }
 
 /* Buttons */
@@ -819,7 +819,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
+  padding: 12px 14px;
   background: var(--white);
   border: 1px solid var(--gray-200);
   border-radius: var(--border-radius-lg);
@@ -849,30 +849,30 @@ button:disabled {
 /* Stats cards */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  margin-bottom: 32px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .stat-card {
   background: var(--white);
   border: 1px solid var(--gray-200);
   border-radius: var(--border-radius-lg);
-  padding: 24px;
+  padding: 14px;
 }
 
 .stat-card-icon {
-  width: 48px;
-  height: 48px;
+  width: 38px;
+  height: 38px;
   border-radius: var(--border-radius);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .stat-card-value {
-  font-size: 1.75rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: var(--gray-900);
   margin-bottom: 4px;
@@ -881,6 +881,51 @@ button:disabled {
 .stat-card-label {
   font-size: 0.875rem;
   color: var(--gray-500);
+}
+
+.compact-stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.integration-pill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.integration-pill {
+  border: 1px solid var(--gray-200);
+  background: linear-gradient(180deg, #fff 0%, #f8fbff 100%);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.compact-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.compact-card {
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  background: #fbfcff;
+  padding: 12px;
+}
+
+.compact-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
 }
 
 /* Empty state */
@@ -946,7 +991,7 @@ tr:hover td {
 .integration-card {
   border: 1px solid var(--gray-200);
   border-radius: var(--border-radius-lg);
-  padding: 24px;
+  padding: 14px;
   transition: all var(--transition);
 }
 

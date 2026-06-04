@@ -4,25 +4,29 @@
 
 set -e
 
+APP_USER="user"
+APP_HOME="/home/$APP_USER"
+APP_DIR="$APP_HOME/RePort"
+
 echo "=== Updating RePort ==="
 
 # Pull latest code
 echo "Pulling latest code..."
-cd /home/report/RePort
+cd $APP_DIR
 git pull
 
 # Update backend dependencies
 echo "Updating backend dependencies..."
-/home/report/venv/bin/pip install -r backend/requirements.txt
+$APP_HOME/venv/bin/pip install -r backend/requirements.txt
 
 # Run migrations
 echo "Running database migrations..."
-cd /home/report/RePort/backend
-/home/report/venv/bin/alembic upgrade head
+cd $APP_DIR/backend
+$APP_HOME/venv/bin/alembic upgrade head
 
 # Update frontend
 echo "Building frontend..."
-cd /home/report/RePort/frontend
+cd $APP_DIR/frontend
 npm install
 npm run build
 

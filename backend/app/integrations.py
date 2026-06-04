@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
+import logging
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import RedirectResponse
@@ -18,6 +20,7 @@ from app.config import (
 )
 
 router = APIRouter(prefix="/integrations")
+logger = logging.getLogger(__name__)
 
 # Yandex OAuth URLs
 YANDEX_AUTH_URL = "https://oauth.yandex.ru/authorize"
@@ -88,6 +91,7 @@ async def get_yandex_auth_url(
         f"&redirect_uri={YANDEX_REDIRECT_URI}"
         f"&scope={scope}"
         f"&state={state}"
+        f"&force_confirm=yes"
     )
     
     return {"auth_url": auth_url}
@@ -200,14 +204,15 @@ async def get_google_auth_url(
     scope = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file"
     
     auth_url = (
-        f"{GOOGLE_AUTH_URL}"
-        f"?response_type=code"
-        f"&client_id={GOOGLE_CLIENT_ID}"
-        f"&redirect_uri={GOOGLE_REDIRECT_URI}"
-        f"&scope={scope}"
-        f"&state={state}"
-        f"&access_type=offline"
-        f"&prompt=consent"
+        f"{GOOGLE_AUTH_URL}?{urlencode({
+            'response_type': 'code',
+            'client_id': GOOGLE_CLIENT_ID,
+            'redirect_uri': GOOGLE_REDIRECT_URI,
+            'scope': scope,
+            'state': state,
+            'access_type': 'offline',
+            'prompt': 'consent',
+        })}"
     )
     
     return {"auth_url": auth_url}
@@ -355,6 +360,14 @@ async def refresh_integration_token(
 ) -> Optional[str]:
     """Refresh an integration's access token if expired."""
     if not integration.refresh_token:
+        # Backward compatibility: older rows may not have refresh token/expires_at.
+        return integration.access_token
+    
+    if integration.access_token and not integration.expires_at:
+        # Keep existing token when expiry timestamp was not stored.
+        return integration.access_token
+    
+    if integration.expires_at is None and not integration.access_token:
         return None
     
     # Check if token is expired or about to expire (within 5 minutes)
@@ -388,7 +401,14 @@ async def refresh_integration_token(
             return None
         
         if response.status_code != 200:
-            return None
+            logger.warning(
+                "Token refresh failed for integration_id=%s type=%s status=%s",
+                integration.id,
+                integration.type,
+                response.status_code,
+            )
+            # Fall back to current access token if we still have one.
+            return integration.access_token
         
         token_data = response.json()
         integration.access_token = token_data.get("access_token")

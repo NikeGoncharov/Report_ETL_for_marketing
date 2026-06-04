@@ -218,17 +218,14 @@ export default function IntegrationsPage() {
       )}
 
       {/* Integration Cards */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="integration-pill-grid">
         {Object.entries(INTEGRATION_TYPES).map(([type, info]) => {
           const integration = getIntegration(type);
           const isConnected = !!integration;
           const isConnecting = connecting === type;
 
           return (
-            <div
-              key={type}
-              className={`integration-card ${isConnected ? "connected" : ""}`}
-            >
+            <div key={type} className={`integration-card ${isConnected ? "connected" : ""}`}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ display: "flex", gap: 16 }}>
                   <div
