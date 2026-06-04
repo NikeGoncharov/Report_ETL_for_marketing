@@ -1,7 +1,7 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { authApi } from "../lib/api";
+import { apiFetch, authApi, projectsApi } from "../lib/api";
 
 type User = {
   id: number;
@@ -13,19 +13,87 @@ type LayoutProps = {
   title?: string;
 };
 
+type ReportNavItem = {
+  id: number;
+  name: string;
+};
+
 export default function Layout({ children, title }: LayoutProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [reports, setReports] = useState<ReportNavItem[]>([]);
+  const [projectName, setProjectName] = useState("");
+
+  const projectId = useMemo(() => {
+    const raw = router.query.id;
+    if (!raw) {
+      return null;
+    }
+    const value = Number(Array.isArray(raw) ? raw[0] : raw);
+    return Number.isFinite(value) ? value : null;
+  }, [router.query.id]);
 
   useEffect(() => {
+    let isActive = true;
     authApi.me()
-      .then(setUser)
-      .catch(() => {
-        router.push("/login");
+      .then((data) => {
+        if (isActive) {
+          setUser(data);
+        }
       })
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      isActive = false;
+    };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const raw = window.localStorage.getItem("report.sidebar.width");
+    if (!raw) {
+      return;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    setSidebarWidth(Math.max(220, Math.min(420, parsed)));
+  }, []);
+
+  useEffect(() => {
+    async function loadProjectNavigation() {
+      if (!projectId) {
+        setReports([]);
+        setProjectName("");
+        return;
+      }
+      try {
+        const [projectData, reportsData] = await Promise.all([
+          projectsApi.get(projectId),
+          apiFetch<ReportNavItem[]>(`/projects/${projectId}/reports`),
+        ]);
+        setProjectName(projectData?.name || "");
+        setReports(reportsData || []);
+      } catch {
+        setProjectName("");
+        setReports([]);
+      }
+    }
+    loadProjectNavigation();
+  }, [projectId]);
 
   async function handleLogout() {
     try {
@@ -44,50 +112,88 @@ export default function Layout({ children, title }: LayoutProps) {
   }
 
   const currentPath = router.pathname;
-  const isActive = (path: string) => {
-    if (path === "/dashboard") {
-      return currentPath === "/dashboard";
+  const isActive = (prefix: string) => {
+    if (prefix === "/dashboard") {
+      return currentPath === "/dashboard" || currentPath.startsWith("/projects");
     }
-    return currentPath.startsWith(path);
+    return currentPath.startsWith(prefix);
   };
+
+  function startSidebarResize(e: React.MouseEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const next = Math.max(220, Math.min(420, startWidth + (moveEvent.clientX - startX)));
+      setSidebarWidth(next);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("report.sidebar.width", String(next));
+      }
+    };
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  const currentReportId = Number(router.query.reportId);
 
   return (
     <div className="app-layout">
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className="sidebar" style={{ width: sidebarWidth }}>
         <Link href="/dashboard" className="sidebar-header">
           <img src="/logo-white.png" alt="RePort" className="sidebar-logo" />
         </Link>
 
         <nav className="sidebar-nav">
-          <Link 
-            href="/dashboard" 
+          <Link
+            href="/dashboard"
             className={`sidebar-nav-item ${isActive("/dashboard") ? "active" : ""}`}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="7" height="7" rx="1"/>
-              <rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="3" y="14" width="7" height="7" rx="1"/>
-              <rect x="14" y="14" width="7" height="7" rx="1"/>
+              <path d="M3 10.5L12 3l9 7.5" />
+              <path d="M5 9.5V21h14V9.5" />
+              <path d="M10 21v-6h4v6" />
             </svg>
-            Проекты
+            Аккаунт
           </Link>
 
-          {router.query.id && (
+          {projectId && (
             <>
-              <Link 
-                href={`/projects/${router.query.id}`}
+              {reports.length > 0 && (
+                <div className="sidebar-subnav">
+                  {reports.map((report) => (
+                    <Link
+                      key={report.id}
+                      href={`/projects/${projectId}/reports/${report.id}`}
+                      className={`sidebar-subnav-item ${currentReportId === report.id ? "active" : ""}`}
+                    >
+                      {report.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              <Link
+                href={`/projects/${projectId}`}
                 className={`sidebar-nav-item ${currentPath === "/projects/[id]" ? "active" : ""}`}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-                  <polyline points="9,22 9,12 15,12 15,22"/>
+                  <path d="M4 5h16" />
+                  <path d="M4 12h16" />
+                  <path d="M4 19h16" />
                 </svg>
-                Обзор проекта
+                {projectName || "Название проекта"}
               </Link>
-              
-              <Link 
-                href={`/projects/${router.query.id}/integrations`}
+
+              <Link
+                href={`/projects/${projectId}/integrations`}
                 className={`sidebar-nav-item ${currentPath.includes("/integrations") ? "active" : ""}`}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -97,8 +203,8 @@ export default function Layout({ children, title }: LayoutProps) {
                 Интеграции
               </Link>
 
-              <Link 
-                href={`/projects/${router.query.id}/reports/new`}
+              <Link
+                href={`/projects/${projectId}/reports/new`}
                 className={`sidebar-nav-item ${currentPath.includes("/reports/new") ? "active" : ""}`}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -121,10 +227,12 @@ export default function Layout({ children, title }: LayoutProps) {
             Выйти
           </button>
         </div>
+
+        <div className="sidebar-resizer" onMouseDown={startSidebarResize} />
       </aside>
 
       {/* Main Content */}
-      <main className="main-content">
+      <main className="main-content" style={{ marginLeft: sidebarWidth }}>
         {title && (
           <header className="main-header">
             <h1>{title}</h1>
