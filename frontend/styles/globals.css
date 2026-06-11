@@ -689,6 +689,27 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.sidebar-nav-item-disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.sidebar-nav-item-disabled:hover {
+  background: none;
+  color: var(--sidebar-text);
+}
+
+.sidebar-nav-soon {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.08);
+  color: #8ea1b9;
+}
+
 .sidebar-footer {
   padding: 16px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -772,7 +793,8 @@ button:disabled {
   font-size: 0.875rem;
   font-weight: 500;
   border-radius: var(--border-radius);
-  border: none;
+  /* Прозрачная рамка выравнивает высоту заливных и контурных кнопок */
+  border: 1px solid transparent;
   cursor: pointer;
   transition: all var(--transition);
 }
@@ -1006,11 +1028,23 @@ button:disabled {
 }
 
 .status-pill {
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
   border-radius: 999px;
   font-size: 0.75rem;
-  color: #f1fff8;
-  background: linear-gradient(135deg, #0cad57 0%, #0a9f50 100%);
+  font-weight: 500;
+  color: var(--success);
+  background: var(--success-light);
+}
+
+.status-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .config-switches {

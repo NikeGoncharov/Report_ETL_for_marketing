@@ -132,7 +132,7 @@ export default function ProjectPage() {
               <div className="list-row">
                 <div className="list-row-title">Новый отчёт</div>
                 <div className="list-row-actions">
-                  <Link href={`/projects/${id}/reports/new`} className="btn btn-success btn-sm">Создать</Link>
+                  <Link href={`/projects/${id}/reports/new`} className="btn btn-primary btn-sm">Создать</Link>
                 </div>
               </div>
             </div>

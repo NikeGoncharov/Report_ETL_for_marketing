@@ -114,7 +114,7 @@ export default function Layout({ children, title }: LayoutProps) {
   const currentPath = router.pathname;
   const isActive = (prefix: string) => {
     if (prefix === "/dashboard") {
-      return currentPath === "/dashboard" || currentPath.startsWith("/projects");
+      return currentPath === "/dashboard";
     }
     return currentPath.startsWith(prefix);
   };
@@ -166,20 +166,6 @@ export default function Layout({ children, title }: LayoutProps) {
 
           {projectId && (
             <>
-              {reports.length > 0 && (
-                <div className="sidebar-subnav">
-                  {reports.map((report) => (
-                    <Link
-                      key={report.id}
-                      href={`/projects/${projectId}/reports/${report.id}`}
-                      className={`sidebar-subnav-item ${currentReportId === report.id ? "active" : ""}`}
-                    >
-                      {report.name}
-                    </Link>
-                  ))}
-                </div>
-              )}
-
               <Link
                 href={`/projects/${projectId}`}
                 className={`sidebar-nav-item ${currentPath === "/projects/[id]" ? "active" : ""}`}
@@ -192,27 +178,33 @@ export default function Layout({ children, title }: LayoutProps) {
                 {projectName || "Название проекта"}
               </Link>
 
-              <Link
-                href={`/projects/${projectId}/integrations`}
-                className={`sidebar-nav-item ${currentPath.includes("/integrations") ? "active" : ""}`}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
-                </svg>
-                Интеграции
-              </Link>
+              <div className="sidebar-subnav">
+                {reports.map((report) => (
+                  <Link
+                    key={report.id}
+                    href={`/projects/${projectId}/reports/${report.id}`}
+                    className={`sidebar-subnav-item ${currentReportId === report.id ? "active" : ""}`}
+                  >
+                    {report.name}
+                  </Link>
+                ))}
+                <Link
+                  href={`/projects/${projectId}/reports/new`}
+                  className={`sidebar-subnav-item ${currentPath.includes("/reports/new") ? "active" : ""}`}
+                >
+                  + Новый отчёт
+                </Link>
+              </div>
 
-              <Link
-                href={`/projects/${projectId}/reports/new`}
-                className={`sidebar-nav-item ${currentPath.includes("/reports/new") ? "active" : ""}`}
-              >
+              <div className="sidebar-nav-item sidebar-nav-item-disabled" title="Скоро: сборщик ядра">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
+                  <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                  <line x1="12" y1="22.08" x2="12" y2="12"/>
                 </svg>
-                Новый отчёт
-              </Link>
+                Core Builder
+                <span className="sidebar-nav-soon">скоро</span>
+              </div>
             </>
           )}
         </nav>

@@ -246,17 +246,7 @@ export default function IntegrationsPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                       <h3 style={{ margin: 0 }}>{info.label}</h3>
                       {isConnected && (
-                        <span
-                          style={{
-                            fontSize: "0.75rem",
-                            padding: "2px 8px",
-                            borderRadius: "9999px",
-                            backgroundColor: "var(--success-light)",
-                            color: "var(--success)",
-                          }}
-                        >
-                          Подключено
-                        </span>
+                        <span className="status-pill">Подключено</span>
                       )}
                     </div>
                     <p style={{ margin: 0, color: "var(--gray-600)", fontSize: "0.875rem" }}>
