@@ -513,10 +513,75 @@ class TestCalculateTransformation:
             "output_column": "cpc",
             "formula": "cost / clicks"
         }
-        
+
         result = transform.transform(data, config)
-        
+
         assert result["source"][0]["cpc"] is None
+
+    def test_calculate_overlapping_column_names(self):
+        """Columns whose names contain other column names must not clash."""
+        transform = CalculateTransformation()
+        data = {
+            "source": [
+                {"cost": 100, "cost_per_conversion": 50},
+            ]
+        }
+        config = {
+            "source": "source",
+            "output_column": "doubled",
+            "formula": "cost_per_conversion * 2"
+        }
+
+        result = transform.transform(data, config)
+
+        assert result["source"][0]["doubled"] == 100.0
+
+    def test_calculate_rejects_non_arithmetic_formula(self):
+        """Anything beyond arithmetic (attribute access, calls) must be rejected."""
+        transform = CalculateTransformation()
+        data = {"source": [{"cost": 100}]}
+
+        for formula in [
+            "().__class__.__bases__[0]",
+            "__import__('os').system('id')",
+            "cost.bit_length()",
+            "[x for x in (1,)]",
+        ]:
+            config = {
+                "source": "source",
+                "output_column": "out",
+                "formula": formula,
+            }
+            with pytest.raises(TransformationError):
+                transform.transform(data, config)
+
+    def test_calculate_rejects_huge_exponent(self):
+        """Power with a huge exponent must not hang the process."""
+        transform = CalculateTransformation()
+        data = {"source": [{"cost": 9}]}
+        config = {
+            "source": "source",
+            "output_column": "out",
+            "formula": "9 ** 9 ** 9"
+        }
+
+        result = transform.transform(data, config)
+
+        assert result["source"][0]["out"] is None
+
+    def test_calculate_missing_column_treated_as_zero(self):
+        """Unknown column names resolve to 0 instead of crashing the pipeline."""
+        transform = CalculateTransformation()
+        data = {"source": [{"cost": 100}]}
+        config = {
+            "source": "source",
+            "output_column": "out",
+            "formula": "cost + missing"
+        }
+
+        result = transform.transform(data, config)
+
+        assert result["source"][0]["out"] == 100.0
 
 
 class TestSortTransformation:

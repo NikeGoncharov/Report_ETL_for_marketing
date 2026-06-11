@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
+import hashlib
+import hmac
 import logging
+import time
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -16,7 +19,7 @@ from app.auth import get_current_user
 from app.config import (
     YANDEX_CLIENT_ID, YANDEX_CLIENT_SECRET, YANDEX_REDIRECT_URI,
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
-    FRONTEND_URL
+    FRONTEND_URL, SECRET_KEY
 )
 
 router = APIRouter(prefix="/integrations")
@@ -34,6 +37,38 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 
 # ============== Helper Functions ==============
+
+# OAuth callbacks have no user session: the provider redirects the browser
+# straight to the backend. The signed state is the only proof that the
+# request originates from an auth-url issued by us for this project —
+# without it, anyone could bind their integration to a foreign project_id.
+OAUTH_STATE_TTL_SECONDS = 600
+
+
+def sign_oauth_state(payload: str) -> str:
+    expires = str(int(time.time()) + OAUTH_STATE_TTL_SECONDS)
+    data = f"{payload}|{expires}"
+    signature = hmac.new(SECRET_KEY.encode(), data.encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{data}|{signature}"
+
+
+def verify_oauth_state(state: str) -> str:
+    """Return the state payload if the signature is valid and not expired."""
+    try:
+        payload, expires, signature = state.rsplit("|", 2)
+        data = f"{payload}|{expires}"
+        expected = hmac.new(SECRET_KEY.encode(), data.encode(), hashlib.sha256).hexdigest()[:32]
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("bad signature")
+        if int(expires) < time.time():
+            raise ValueError("state expired")
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid state parameter"
+        )
+    return payload
+
 
 async def verify_project_access(
     project_id: int,
@@ -76,24 +111,24 @@ async def get_yandex_auth_url(
         )
     
     # State contains project_id and integration_type for callback
-    state = f"{project_id}:{integration_type}"
-    
+    state = sign_oauth_state(f"{project_id}:{integration_type}")
+
     # Different scopes for Direct and Metrika
     if integration_type == "yandex_direct":
         scope = "direct:api"
     else:
         scope = "metrika:read"
-    
-    auth_url = (
-        f"{YANDEX_AUTH_URL}"
-        f"?response_type=code"
-        f"&client_id={YANDEX_CLIENT_ID}"
-        f"&redirect_uri={YANDEX_REDIRECT_URI}"
-        f"&scope={scope}"
-        f"&state={state}"
-        f"&force_confirm=yes"
-    )
-    
+
+    params = {
+        "response_type": "code",
+        "client_id": YANDEX_CLIENT_ID,
+        "redirect_uri": YANDEX_REDIRECT_URI,
+        "scope": scope,
+        "state": state,
+        "force_confirm": "yes",
+    }
+    auth_url = f"{YANDEX_AUTH_URL}?{urlencode(params)}"
+
     return {"auth_url": auth_url}
 
 
@@ -104,15 +139,21 @@ async def yandex_callback(
     db: AsyncSession = Depends(get_db)
 ):
     """Handle Yandex OAuth callback."""
+    payload = verify_oauth_state(state)
     try:
-        project_id, integration_type = state.split(":")
+        project_id, integration_type = payload.split(":")
         project_id = int(project_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid state parameter"
         )
-    
+    if integration_type not in ("yandex_direct", "yandex_metrika"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid state parameter"
+        )
+
     # Exchange code for tokens
     async with httpx.AsyncClient() as client:
         token_response = await client.post(
@@ -200,21 +241,20 @@ async def get_google_auth_url(
             detail="Google OAuth not configured"
         )
     
-    state = str(project_id)
+    state = sign_oauth_state(str(project_id))
     scope = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file"
-    
-    auth_url = (
-        f"{GOOGLE_AUTH_URL}?{urlencode({
-            'response_type': 'code',
-            'client_id': GOOGLE_CLIENT_ID,
-            'redirect_uri': GOOGLE_REDIRECT_URI,
-            'scope': scope,
-            'state': state,
-            'access_type': 'offline',
-            'prompt': 'consent',
-        })}"
-    )
-    
+
+    params = {
+        "response_type": "code",
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "scope": scope,
+        "state": state,
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    auth_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+
     return {"auth_url": auth_url}
 
 
@@ -225,14 +265,15 @@ async def google_callback(
     db: AsyncSession = Depends(get_db)
 ):
     """Handle Google OAuth callback."""
+    payload = verify_oauth_state(state)
     try:
-        project_id = int(state)
+        project_id = int(payload)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid state parameter"
         )
-    
+
     # Exchange code for tokens
     async with httpx.AsyncClient() as client:
         token_response = await client.post(

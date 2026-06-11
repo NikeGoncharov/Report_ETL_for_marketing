@@ -447,7 +447,17 @@ async def get_report_runs(
 ):
     """Get run history for a report."""
     await verify_project_access(project_id, current_user, db)
-    
+
+    report_result = await db.execute(
+        select(Report)
+        .where(Report.id == report_id, Report.project_id == project_id)
+    )
+    if not report_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found"
+        )
+
     result = await db.execute(
         select(ReportRun)
         .where(ReportRun.report_id == report_id)
@@ -455,5 +465,5 @@ async def get_report_runs(
         .limit(20)
     )
     runs = result.scalars().all()
-    
+
     return runs

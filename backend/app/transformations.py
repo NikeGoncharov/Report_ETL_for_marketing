@@ -1,4 +1,6 @@
 """Data transformation pipeline for reports."""
+import ast
+import operator
 import re
 from typing import List, Dict, Any, Optional
 from collections import defaultdict
@@ -236,42 +238,102 @@ class FilterTransformation(BaseTransformation):
         return data
 
 
+# Formulas come from user-supplied report configs, so they are evaluated over
+# an AST whitelist instead of eval(): only arithmetic over numbers and column
+# names is reachable.
+_FORMULA_BINARY_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+}
+_FORMULA_UNARY_OPS = {
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+_FORMULA_MAX_EXPONENT = 100
+
+
+def parse_formula(formula: str) -> ast.Expression:
+    """Parse a formula and reject anything beyond arithmetic over columns."""
+    try:
+        tree = ast.parse(formula, mode="eval")
+    except SyntaxError as e:
+        raise TransformationError(f"Invalid formula: {e.msg}")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Expression):
+            continue
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            continue
+        if isinstance(node, ast.Name):
+            continue
+        if isinstance(node, ast.BinOp) and type(node.op) in _FORMULA_BINARY_OPS:
+            continue
+        if isinstance(node, ast.UnaryOp) and type(node.op) in _FORMULA_UNARY_OPS:
+            continue
+        if isinstance(node, (ast.operator, ast.unaryop, ast.expr_context)):
+            continue
+        raise TransformationError(
+            "Formula may only contain numbers, column names and + - * / % ** operators"
+        )
+    return tree
+
+
+def evaluate_formula(tree: ast.Expression, row: Dict[str, Any]) -> float:
+    """Evaluate a parsed formula against one row of data."""
+
+    def _eval(node):
+        if isinstance(node, ast.Expression):
+            return _eval(node.body)
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            value = row.get(node.id)
+            return float(value) if value is not None else 0.0
+        if isinstance(node, ast.UnaryOp):
+            return _FORMULA_UNARY_OPS[type(node.op)](_eval(node.operand))
+        if isinstance(node, ast.BinOp):
+            left = _eval(node.left)
+            right = _eval(node.right)
+            if isinstance(node.op, ast.Pow) and abs(right) > _FORMULA_MAX_EXPONENT:
+                raise ValueError("exponent too large")
+            return _FORMULA_BINARY_OPS[type(node.op)](left, right)
+        raise ValueError("unsupported expression")
+
+    return _eval(tree)
+
+
 class CalculateTransformation(BaseTransformation):
     """Add calculated column."""
-    
+
     def transform(self, data: Dict[str, List[Dict]], config: Dict[str, Any]) -> Dict[str, List[Dict]]:
         source = config.get("source")
         output_column = config.get("output_column")
         formula = config.get("formula")  # e.g., "cost / clicks" or "cost / conversions"
-        
+
         if not all([source, output_column, formula]):
             raise TransformationError("calculate requires: source, output_column, formula")
-        
+
         if source not in data:
             raise TransformationError(f"Source '{source}' not found")
-        
+
+        tree = parse_formula(formula)
+
         result = []
         for row in data[source]:
             new_row = row.copy()
             try:
-                # Simple expression evaluation (only basic math operations)
-                # Parse formula like "cost / clicks"
-                expr = formula
-                for col in row.keys():
-                    if col in expr:
-                        val = row.get(col, 0)
-                        if val is None:
-                            val = 0
-                        expr = expr.replace(col, str(float(val)))
-                
-                # Safe evaluation of math expression
-                result_value = eval(expr, {"__builtins__": {}}, {})
+                result_value = evaluate_formula(tree, row)
                 new_row[output_column] = round(result_value, 4) if isinstance(result_value, float) else result_value
-            except (ZeroDivisionError, ValueError, TypeError):
+            except (ZeroDivisionError, ValueError, TypeError, OverflowError):
                 new_row[output_column] = None
-            
+
             result.append(new_row)
-        
+
         data[source] = result
         return data
 

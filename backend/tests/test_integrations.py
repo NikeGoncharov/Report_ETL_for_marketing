@@ -1,4 +1,7 @@
 """Tests for integrations API endpoints with mocked external APIs."""
+import time
+from urllib.parse import unquote
+
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from datetime import datetime, timedelta
@@ -7,6 +10,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models import Integration, Project
+from app.integrations import sign_oauth_state, verify_oauth_state
+
+
+class TestOAuthState:
+    """Tests for signed OAuth state (CSRF protection of callbacks)."""
+
+    def test_sign_and_verify_roundtrip(self):
+        state = sign_oauth_state("42:yandex_direct")
+        assert verify_oauth_state(state) == "42:yandex_direct"
+
+    def test_tampered_payload_rejected(self):
+        state = sign_oauth_state("42:yandex_direct")
+        payload, expires, signature = state.rsplit("|", 2)
+        forged = f"43:yandex_direct|{expires}|{signature}"
+        with pytest.raises(Exception) as exc_info:
+            verify_oauth_state(forged)
+        assert getattr(exc_info.value, "status_code", None) == 400
+
+    def test_unsigned_state_rejected(self):
+        with pytest.raises(Exception) as exc_info:
+            verify_oauth_state("42:yandex_direct")
+        assert getattr(exc_info.value, "status_code", None) == 400
+
+    def test_expired_state_rejected(self):
+        with patch("app.integrations.OAUTH_STATE_TTL_SECONDS", -1):
+            state = sign_oauth_state("42:yandex_direct")
+        with pytest.raises(Exception) as exc_info:
+            verify_oauth_state(state)
+        assert getattr(exc_info.value, "status_code", None) == 400
 
 
 class TestGetProjectIntegrations:
@@ -134,7 +166,7 @@ class TestYandexAuthUrl:
         data = response.json()
         assert "auth_url" in data
         assert "oauth.yandex.ru" in data["auth_url"]
-        assert "direct:api" in data["auth_url"]
+        assert "direct:api" in unquote(data["auth_url"])
     
     @pytest.mark.asyncio
     @patch("app.integrations.YANDEX_CLIENT_ID", "test_client_id")
@@ -154,7 +186,7 @@ class TestYandexAuthUrl:
         assert response.status_code == 200
         data = response.json()
         assert "auth_url" in data
-        assert "metrika:read" in data["auth_url"]
+        assert "metrika:read" in unquote(data["auth_url"])
     
     @pytest.mark.asyncio
     @patch("app.integrations.YANDEX_CLIENT_ID", None)

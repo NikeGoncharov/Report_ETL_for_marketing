@@ -58,10 +58,12 @@ FRONTEND_URL=https://report-analytics.ru
 COOKIE_SECURE=true
 YANDEX_CLIENT_ID=
 YANDEX_CLIENT_SECRET=
-YANDEX_REDIRECT_URI=https://report-analytics.ru/integrations/yandex/callback
+# nginx проксирует на бэкенд только /api/* (срезая префикс), поэтому
+# callback-URI обязан содержать /api — иначе редирект уйдёт во фронтенд (404).
+YANDEX_REDIRECT_URI=https://report-analytics.ru/api/integrations/yandex/callback
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=https://report-analytics.ru/integrations/google/callback
+GOOGLE_REDIRECT_URI=https://report-analytics.ru/api/integrations/google/callback
 EOF
     chown $APP_USER:$APP_USER $APP_DIR/backend/.env
 fi

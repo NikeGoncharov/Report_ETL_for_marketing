@@ -368,6 +368,42 @@ class TestDeleteReport:
         assert response.status_code == 404
 
 
+class TestReportRunsAccess:
+    """Tests for GET /projects/{project_id}/reports/{report_id}/runs access control."""
+
+    @pytest.mark.asyncio
+    async def test_runs_require_matching_project(
+        self, client: AsyncClient, auth_headers, test_report
+    ):
+        """Runs must not be readable through a different project's URL (IDOR)."""
+        response = await client.post(
+            "/projects",
+            json={"name": "Other project"},
+            headers=auth_headers
+        )
+        other_project_id = response.json()["id"]
+
+        response = await client.get(
+            f"/projects/{other_project_id}/reports/{test_report.id}/runs",
+            headers=auth_headers
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_runs_empty_for_own_report(
+        self, client: AsyncClient, auth_headers, test_project, test_report
+    ):
+        """Owner sees (empty) run history through the correct project."""
+        response = await client.get(
+            f"/projects/{test_project.id}/reports/{test_report.id}/runs",
+            headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+
 class TestReportPeriodConfig:
     """Tests for various period configurations."""
     
