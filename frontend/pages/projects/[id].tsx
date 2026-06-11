@@ -120,9 +120,6 @@ export default function ProjectPage() {
                 <div key={report.id} className="list-row">
                   <div className="list-row-title">{report.name}</div>
                   <div className="list-row-actions">
-                    <Link href={`/projects/${id}/reports/${report.id}/edit`} className="btn btn-secondary btn-sm">
-                      Изменить
-                    </Link>
                     <Link href={`/projects/${id}/reports/${report.id}`} className="btn btn-primary btn-sm">
                       Открыть
                     </Link>

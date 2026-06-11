@@ -147,4 +147,53 @@ export const reportsApi = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+  delete: (projectId: number, reportId: number) =>
+    apiFetch(`/projects/${projectId}/reports/${reportId}`, {
+      method: "DELETE",
+    }),
+  // Превью пайплайна: stage = fetched | transformed | merged | final;
+  // dataset_id — для стадий одного датасета; refresh = игнорировать кэш
+  preview: (
+    projectId: number,
+    config: Record<string, unknown>,
+    options: { stage?: string; dataset_id?: string; refresh?: boolean } = {},
+  ) =>
+    apiFetch(`/projects/${projectId}/reports/preview`, {
+      method: "POST",
+      body: JSON.stringify({ config, ...options }),
+    }),
+  run: (projectId: number, reportId: number) =>
+    apiFetch(`/projects/${projectId}/reports/${reportId}/run`, {
+      method: "POST",
+    }),
+  runs: (projectId: number, reportId: number) =>
+    apiFetch(`/projects/${projectId}/reports/${reportId}/runs`),
+};
+
+export const catalogApi = {
+  get: () => apiFetch("/reports/catalog"),
+};
+
+export const integrationsApi = {
+  list: (projectId: number) => apiFetch(`/integrations/projects/${projectId}`),
+  delete: (integrationId: number) =>
+    apiFetch(`/integrations/${integrationId}`, { method: "DELETE" }),
+  yandexAuthUrl: (projectId: number, integrationType: string) =>
+    apiFetch(
+      `/integrations/yandex/auth-url?project_id=${projectId}&integration_type=${integrationType}`,
+    ),
+  googleAuthUrl: (projectId: number) =>
+    apiFetch(`/integrations/google/auth-url?project_id=${projectId}`),
+};
+
+export const directApi = {
+  campaigns: (projectId: number) =>
+    apiFetch(`/direct/campaigns?project_id=${projectId}`),
+};
+
+export const metrikaApi = {
+  counters: (projectId: number) =>
+    apiFetch(`/metrika/counters?project_id=${projectId}`),
+  goals: (projectId: number, counterId: number) =>
+    apiFetch(`/metrika/goals?project_id=${projectId}&counter_id=${counterId}`),
 };

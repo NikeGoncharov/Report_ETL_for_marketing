@@ -1047,6 +1047,474 @@ button:disabled {
   background: currentColor;
 }
 
+/* ============== Конструктор отчётов (рабочее пространство) ============== */
+
+.workspace {
+  display: grid;
+  gap: 16px;
+}
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.report-name-input {
+  flex: 1;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.stage-card .stage-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.stage-num {
+  flex-shrink: 0;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--white);
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage-header h3 {
+  margin: 2px 0 4px;
+}
+
+.stage-desc {
+  font-size: 0.82rem;
+  color: var(--gray-500);
+  line-height: 1.4;
+}
+
+.field-hint {
+  font-size: 0.8rem;
+  color: var(--gray-500);
+  margin-bottom: 6px;
+}
+
+.inline-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--gray-700);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+/* Период */
+.period-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.period-preset {
+  border: 1px solid var(--gray-300);
+  background: var(--white);
+  color: var(--gray-700);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.period-preset:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.period-preset.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--white);
+}
+
+.period-custom {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.period-custom .input-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Датасеты */
+.dataset-card {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius-lg);
+  padding: 14px;
+  margin-bottom: 14px;
+  background: var(--gray-50);
+}
+
+.dataset-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dataset-badge {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--white);
+}
+
+.dataset-badge-direct {
+  background: #fc3f1d;
+}
+
+.dataset-badge-metrika {
+  background: #ffba00;
+  color: #4a3500;
+}
+
+.dataset-name-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--gray-800);
+  padding: 4px;
+}
+
+.dataset-name-input:focus {
+  outline: 1px solid var(--gray-300);
+  border-radius: 6px;
+}
+
+.dataset-params {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.param-block {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius);
+  padding: 10px 12px;
+}
+
+.param-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+}
+
+.param-row .input-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--gray-600);
+}
+
+.vat-toggle {
+  padding-bottom: 8px;
+}
+
+.checkbox-grid {
+  display: grid;
+  gap: 4px 12px;
+}
+
+.checkbox-grid-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  color: var(--gray-700);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.campaign-picker .input {
+  margin-bottom: 8px;
+}
+
+.campaign-list {
+  max-height: 180px;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+}
+
+/* Шаги трансформаций */
+.dataset-steps {
+  margin-top: 12px;
+}
+
+.steps-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.step-row {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius);
+  padding: 8px 10px;
+}
+
+.step-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-num {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--gray-200);
+  color: var(--gray-700);
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-type {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--gray-800);
+  flex: 1;
+}
+
+.step-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.step-btn {
+  border: 1px solid var(--gray-300);
+  background: var(--white);
+  color: var(--gray-600);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.step-btn:hover:not(:disabled) {
+  border-color: var(--gray-400);
+  background: var(--gray-50);
+}
+
+.step-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.step-btn-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.step-row-body {
+  margin-top: 8px;
+}
+
+.step-fields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.step-fields .input {
+  width: auto;
+  min-width: 140px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+}
+
+.step-grow {
+  flex: 1;
+}
+
+.step-fields-column {
+  display: grid;
+  gap: 8px;
+}
+
+.field-arrow {
+  color: var(--gray-400);
+}
+
+.steps-add .input {
+  width: auto;
+  min-width: 200px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+}
+
+/* Чипы */
+.chips-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--border-radius);
+  background: var(--white);
+  padding: 6px 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--primary);
+  color: var(--white);
+  border-radius: 999px;
+  padding: 3px 6px 3px 10px;
+  font-size: 0.78rem;
+}
+
+.chip-remove {
+  border: none;
+  background: rgba(255, 255, 255, 0.25);
+  color: var(--white);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.chips-input-field {
+  border: none;
+  outline: none;
+  font-size: 0.82rem;
+  min-width: 110px;
+  flex: 1;
+  padding: 3px;
+}
+
+/* Превью */
+.dataset-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.preview-stage-label {
+  font-size: 0.78rem;
+  color: var(--gray-500);
+}
+
+.preview-wrap {
+  margin-top: 10px;
+}
+
+.preview-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius);
+  background: var(--white);
+}
+
+.preview-table th,
+.preview-table td {
+  white-space: nowrap;
+  font-size: 0.8rem;
+  padding: 7px 10px;
+}
+
+.preview-status {
+  font-size: 0.78rem;
+  color: var(--gray-500);
+  margin-top: 6px;
+}
+
+.preview-error {
+  margin-top: 10px;
+  font-size: 0.82rem;
+}
+
+/* Этап 3 и экспорт */
+.panel-block {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius);
+  background: var(--gray-50);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.panel-toggle strong {
+  font-size: 0.9rem;
+}
+
+.merge-fields {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.merge-fields .input-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--gray-600);
+}
+
+.merge-fields .input {
+  width: auto;
+  min-width: 180px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+}
+
+.dataset-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.runs-history {
+  margin-top: 16px;
+}
+
+.run-error {
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.status-pill-failed {
+  color: var(--danger);
+  background: var(--danger-light);
+}
+
 .config-switches {
   display: flex;
   gap: 8px;
