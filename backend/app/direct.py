@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models import User, Project, Integration
 from app.auth import get_current_user
 from app.integrations import verify_project_access, refresh_integration_token
+from app.catalog import DIRECT_FIELD_IDS, DIRECT_INT_FIELDS, DIRECT_FLOAT_FIELDS
 
 router = APIRouter(prefix="/direct")
 
@@ -89,11 +90,8 @@ async def call_direct_api(
         return data.get("result", {})
 
 
-DIRECT_REPORT_FIELDS_WHITELIST = {
-    "CampaignId", "CampaignName", "Date",
-    "Impressions", "Clicks", "Cost", "Ctr", "AvgCpc",
-    "Conversions", "ConversionRate", "CostPerConversion",
-}
+# Белый список полей Reports API живёт в app.catalog (единый с UI-каталогом)
+DIRECT_REPORT_FIELDS_WHITELIST = DIRECT_FIELD_IDS
 
 
 async def fetch_direct_stats(
@@ -103,6 +101,7 @@ async def fetch_direct_stats(
     campaign_ids: Optional[List[int]] = None,
     group_by: str = "campaign",
     direct_fields: Optional[List[str]] = None,
+    include_vat: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Fetch Direct statistics for the given period.
@@ -140,7 +139,7 @@ async def fetch_direct_stats(
         "ReportType": "CAMPAIGN_PERFORMANCE_REPORT",
         "DateRangeType": "CUSTOM_DATE",
         "Format": "TSV",
-        "IncludeVAT": "YES",
+        "IncludeVAT": "YES" if include_vat else "NO",
         "IncludeDiscount": "NO",
     }
 
@@ -177,12 +176,16 @@ async def fetch_direct_stats(
                         for i, header in enumerate(report_headers):
                             if i < len(values):
                                 value = values[i]
-                                if header in ["Impressions", "Clicks", "Conversions"]:
-                                    row[header.lower()] = int(value) if value else 0
-                                elif header in ["Cost", "Ctr", "AvgCpc", "ConversionRate", "CostPerConversion"]:
-                                    row[header.lower()] = float(value) if value else 0.0
+                                key = header.lower()
+                                # "--" — так Reports API отдаёт отсутствующее значение
+                                if value == "--":
+                                    value = ""
+                                if key in DIRECT_INT_FIELDS:
+                                    row[key] = int(float(value)) if value else 0
+                                elif key in DIRECT_FLOAT_FIELDS:
+                                    row[key] = float(value) if value else 0.0
                                 else:
-                                    row[header.lower()] = value
+                                    row[key] = value
                         data.append(row)
                     return data
 

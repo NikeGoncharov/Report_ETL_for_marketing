@@ -110,59 +110,73 @@ class GroupByTransformation(BaseTransformation):
 
 
 class JoinTransformation(BaseTransformation):
-    """Join two data sources."""
-    
+    """Join two data sources.
+
+    Ключ задаётся либо одним именем `on` (одинаковым с обеих сторон), либо
+    парой `left_on`/`right_on` — например campaignname слева и UTMCampaign
+    справа. Значения ключей сравниваются как строки без регистра, чтобы
+    "Кампания 1" из Директа сматчилась с "кампания 1" из UTM-метки.
+    """
+
+    @staticmethod
+    def _key(value: Any) -> str:
+        if value is None:
+            return ""
+        return str(value).strip().lower()
+
     def transform(self, data: Dict[str, List[Dict]], config: Dict[str, Any]) -> Dict[str, List[Dict]]:
         left_source = config.get("left")
         right_source = config.get("right")
         on_column = config.get("on")
+        left_on = config.get("left_on") or on_column
+        right_on = config.get("right_on") or on_column
         how = config.get("how", "inner")  # inner, left, right, outer
         output_source = config.get("output", left_source)
-        
-        if not all([left_source, right_source, on_column]):
-            raise TransformationError("join requires: left, right, on")
-        
+
+        if not all([left_source, right_source, left_on, right_on]):
+            raise TransformationError("join requires: left, right and on (or left_on + right_on)")
+
         if left_source not in data:
             raise TransformationError(f"Left source '{left_source}' not found")
         if right_source not in data:
             raise TransformationError(f"Right source '{right_source}' not found")
-        
+
         left_data = data[left_source]
         right_data = data[right_source]
-        
+
         # Build index for right data
         right_index = defaultdict(list)
         for row in right_data:
-            key = row.get(on_column, "")
-            right_index[key].append(row)
-        
+            right_index[self._key(row.get(right_on, ""))].append(row)
+
         result = []
         used_right_keys = set()
-        
+
         for left_row in left_data:
-            key = left_row.get(on_column, "")
+            key = self._key(left_row.get(left_on, ""))
             right_rows = right_index.get(key, [])
-            
+
             if right_rows:
                 used_right_keys.add(key)
                 for right_row in right_rows:
                     merged = {**left_row}
                     for k, v in right_row.items():
-                        if k != on_column:  # Don't duplicate join column
-                            # Add prefix if column already exists
-                            new_key = k if k not in merged else f"right_{k}"
-                            merged[new_key] = v
+                        if k == right_on:  # Don't duplicate join column
+                            continue
+                        # Add prefix if column already exists
+                        new_key = k if k not in merged else f"right_{k}"
+                        merged[new_key] = v
                     result.append(merged)
             elif how in ("left", "outer"):
                 result.append(left_row.copy())
-        
+
         # Add unmatched right rows for outer/right join
         if how in ("right", "outer"):
             for key, right_rows in right_index.items():
                 if key not in used_right_keys:
                     for right_row in right_rows:
                         result.append(right_row.copy())
-        
+
         data[output_source] = result
         return data
 

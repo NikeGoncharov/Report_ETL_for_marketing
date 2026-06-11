@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Dict, Any, Literal, Union
 
 
 # ============== User Schemas ==============
@@ -98,11 +98,15 @@ class TransformationConfig(BaseModel):
     output_column: Optional[str] = None
     aggregations: Optional[dict] = None
     on: Optional[str] = None
+    left_on: Optional[str] = None  # join: ключ слева (если имена ключей различаются)
+    right_on: Optional[str] = None  # join: ключ справа
     how: Optional[str] = None
+    output: Optional[str] = None  # join: куда писать результат
     mapping: Optional[dict] = None  # for rename
     operator: Optional[str] = None  # for filter
     value: Optional[Any] = None  # for filter
     formula: Optional[str] = None  # for calculate
+    descending: Optional[bool] = None  # for sort
 
 
 class ExportConfig(BaseModel):
@@ -125,14 +129,118 @@ class ReportConfig(BaseModel):
     export: ExportConfig
 
 
+# ============== Report Config v2 (staged pipeline) ==============
+# Пайплайн отчёта: датасеты (состояние 1) -> шаги датасета (состояние 2)
+# -> сшивка + группировка (состояние 3) -> экспорт.
+# extra="forbid": неизвестное поле — это ошибка 422, а не молчаливая потеря.
+
+PERIOD_TYPES = Literal[
+    "today", "yesterday",
+    "last_7_days", "last_14_days", "last_15_days", "last_30_days", "last_90_days",
+    "this_month", "last_month", "custom",
+]
+
+
+class PeriodConfigV2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: PERIOD_TYPES = "last_30_days"
+    date_from: Optional[str] = None  # YYYY-MM-DD, только для custom
+    date_to: Optional[str] = None
+
+
+class StepConfig(BaseModel):
+    """Шаг трансформации внутри датасета. Поле source проставляет движок."""
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["extract", "filter", "rename", "calculate", "sort", "group_by"]
+    column: Optional[str] = None
+    columns: Optional[List[str]] = None
+    pattern: Optional[str] = None
+    output_column: Optional[str] = None
+    aggregations: Optional[Dict[str, str]] = None
+    mapping: Optional[Dict[str, str]] = None
+    operator: Optional[str] = None
+    value: Optional[Any] = None
+    formula: Optional[str] = None
+    descending: Optional[bool] = None
+
+
+class DatasetConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    type: Literal["direct", "metrika"]
+    label: Optional[str] = None
+    # Директ
+    campaign_ids: Optional[List[int]] = None  # пусто/None = все кампании
+    fields: Optional[List[str]] = None  # из catalog.DIRECT_FIELDS
+    group_by: Optional[Literal["campaign", "day"]] = None
+    include_vat: bool = True  # расход с НДС / без НДС
+    # Метрика
+    counter_id: Optional[int] = None
+    metrics: Optional[List[str]] = None
+    dimensions: Optional[List[str]] = None
+    goals: Optional[List[int]] = None
+    # Состояние 2: шаги трансформации датасета
+    steps: List[StepConfig] = []
+
+
+class MergeConfig(BaseModel):
+    """Состояние 3а: сшивка двух датасетов (кампании <-> UTM)."""
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    left: Optional[str] = None  # id датасета
+    right: Optional[str] = None
+    left_key: Optional[str] = None  # имя колонки слева (например campaignname)
+    right_key: Optional[str] = None  # имя колонки справа (например UTMCampaign)
+    how: Literal["inner", "left", "right", "outer"] = "left"
+
+
+class GroupingConfig(BaseModel):
+    """Состояние 3б: группировка результата (например, по типу площадки)."""
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    columns: List[str] = []
+    aggregations: Dict[str, str] = {}
+
+
+class ExportConfigV2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["google_sheets"] = "google_sheets"
+    spreadsheet_id: Optional[str] = None
+    sheet_name: Optional[str] = None
+    create_new: bool = False  # true = новая таблица при каждом запуске
+
+
+class ReportConfigV2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[2]
+    datasets: List[DatasetConfig]
+    period: PeriodConfigV2
+    merge: MergeConfig = MergeConfig()
+    grouping: GroupingConfig = GroupingConfig()
+    # Какой датасет считать результатом, если сшивка выключена (по умолчанию первый)
+    result_dataset: Optional[str] = None
+    export: ExportConfigV2 = ExportConfigV2()
+
+
+# Union: сначала пробуем v2 (требует version=2), затем легаси-схему
+AnyReportConfig = Union[ReportConfigV2, ReportConfig]
+
+
 class ReportCreate(BaseModel):
     name: str
-    config: ReportConfig
+    config: AnyReportConfig
 
 
 class ReportUpdate(BaseModel):
     name: Optional[str] = None
-    config: Optional[ReportConfig] = None
+    config: Optional[AnyReportConfig] = None
 
 
 class ReportResponse(BaseModel):
@@ -167,6 +275,13 @@ class ReportRunResponse(BaseModel):
 class PreviewRequest(BaseModel):
     """Preview accepts full config as dict so frontend field selection is not stripped."""
     config: dict  # ReportConfig-like; use .get() in pipeline to preserve direct_fields, direct_group_by, etc.
+    # Состояние пайплайна, до которого выполнить превью (только для конфигов v2):
+    # fetched | transformed | merged | final
+    stage: Literal["fetched", "transformed", "merged", "final"] = "final"
+    # Для fetched/transformed: какой датасет показать (по умолчанию первый)
+    dataset_id: Optional[str] = None
+    # true = игнорировать серверный кэш выгрузки и заново сходить во внешние API
+    refresh: bool = False
 
 
 class PreviewResponse(BaseModel):

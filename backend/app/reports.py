@@ -1,4 +1,7 @@
 """Reports API with transformation pipeline."""
+import hashlib
+import json
+import time
 from datetime import datetime, timedelta, date
 from typing import List, Optional, Dict, Any
 
@@ -25,14 +28,23 @@ router = APIRouter()
 def get_date_range(period_config: dict) -> tuple[str, str]:
     """Get date range from period configuration."""
     period_type = period_config.get("type", "last_7_days")
-    
+
     today = date.today()
-    
-    if period_type == "last_7_days":
+
+    if period_type == "today":
+        date_from = today
+        date_to = today
+    elif period_type == "yesterday":
+        date_from = today - timedelta(days=1)
+        date_to = today - timedelta(days=1)
+    elif period_type == "last_7_days":
         date_from = today - timedelta(days=7)
         date_to = today - timedelta(days=1)
     elif period_type == "last_14_days":
         date_from = today - timedelta(days=14)
+        date_to = today - timedelta(days=1)
+    elif period_type == "last_15_days":
+        date_from = today - timedelta(days=15)
         date_to = today - timedelta(days=1)
     elif period_type == "last_30_days":
         date_from = today - timedelta(days=30)
@@ -49,13 +61,13 @@ def get_date_range(period_config: dict) -> tuple[str, str]:
         date_from = last_month_end.replace(day=1)
         date_to = last_month_end
     elif period_type == "custom":
-        date_from = period_config.get("date_from", str(today - timedelta(days=7)))
-        date_to = period_config.get("date_to", str(today - timedelta(days=1)))
+        date_from = period_config.get("date_from") or str(today - timedelta(days=7))
+        date_to = period_config.get("date_to") or str(today - timedelta(days=1))
         return date_from, date_to
     else:
         date_from = today - timedelta(days=7)
         date_to = today - timedelta(days=1)
-    
+
     return str(date_from), str(date_to)
 
 
@@ -86,65 +98,290 @@ async def fetch_source_data(
         return data
     
     elif source_type == "metrika":
-        integration = await get_metrika_integration(project_id, current_user, db)
-        counter_id = source_config.get("counter_id")
-        goals = source_config.get("goals", [])
-        config_metrics = source_config.get("metrics")
-        config_dimensions = source_config.get("dimensions")
-
-        if not counter_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="counter_id is required for Metrika source"
-            )
-
-        metrics = config_metrics if (config_metrics and len(config_metrics) > 0) else ["ym:s:visits", "ym:s:users", "ym:s:bounceRate"]
-        if goals:
-            metrics = list(metrics) + [f"ym:s:goal{g}reaches" for g in goals]
-        metrics_str = ",".join(metrics) if isinstance(metrics, list) else metrics
-
-        dimensions = config_dimensions if (config_dimensions and len(config_dimensions) > 0) else ["ym:s:UTMSource", "ym:s:UTMCampaign"]
-        dimensions_str = ",".join(dimensions) if isinstance(dimensions, list) else dimensions
-
-        result = await call_metrika_api(
-            "stat/v1/data",
-            {
-                "ids": counter_id,
-                "date1": date_from,
-                "date2": date_to,
-                "metrics": metrics_str,
-                "dimensions": dimensions_str,
-                "accuracy": "full",
-                "limit": 10000,
-            },
-            integration.access_token,
+        return await fetch_metrika_rows(
+            source_config, date_from, date_to, project_id, current_user, db
         )
 
-        data_result = result.get("data", [])
-        query = result.get("query", {})
-        metric_names = [m.replace("ym:s:", "") for m in query.get("metrics", [])]
-        dimension_keys = query.get("dimensions", [])
-
-        data = []
-        for item in data_result:
-            dims = item.get("dimensions", [])
-            mets = item.get("metrics", [])
-            row = {}
-            for i, dim in enumerate(dims):
-                key = dimension_keys[i].replace("ym:s:", "").replace(":", "_") if i < len(dimension_keys) else f"dim_{i}"
-                row[key] = dim.get("name")
-            for i, m in enumerate(mets):
-                metric_name = metric_names[i] if i < len(metric_names) else f"metric_{i}"
-                row[metric_name] = m
-            data.append(row)
-
-        return data
-    
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown source type: {source_type}"
         )
+
+
+# ============== Pipeline v2: датасеты -> шаги -> сшивка -> группировка ==============
+
+# Кэш сырых выгрузок (состояние 1): пока пользователь итерирует трансформации
+# в конструкторе, внешние API не дёргаются повторно. Кэш в памяти процесса —
+# при рестарте бэкенда просто выгрузим заново.
+FETCH_CACHE_TTL_SECONDS = 600
+FETCH_CACHE_MAX_ENTRIES = 200
+_fetch_cache: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
+
+
+def _dataset_cache_key(project_id: int, source_params: dict, date_from: str, date_to: str) -> str:
+    payload = json.dumps(
+        [project_id, source_params, date_from, date_to],
+        sort_keys=True, ensure_ascii=False, default=str,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _cache_get(key: str) -> Optional[List[Dict[str, Any]]]:
+    entry = _fetch_cache.get(key)
+    if not entry:
+        return None
+    stored_at, rows = entry
+    if time.monotonic() - stored_at > FETCH_CACHE_TTL_SECONDS:
+        _fetch_cache.pop(key, None)
+        return None
+    # Копии строк: дальнейшие шаги не должны портить кэш
+    return [dict(r) for r in rows]
+
+
+def _cache_put(key: str, rows: List[Dict[str, Any]]) -> None:
+    if len(_fetch_cache) >= FETCH_CACHE_MAX_ENTRIES:
+        oldest = min(_fetch_cache, key=lambda k: _fetch_cache[k][0])
+        _fetch_cache.pop(oldest, None)
+    _fetch_cache[key] = (time.monotonic(), [dict(r) for r in rows])
+
+
+def _dataset_source_params(dataset: dict) -> dict:
+    """Параметры датасета, влияющие на выгрузку (без шагов трансформаций)."""
+    return {k: v for k, v in dataset.items() if k not in ("steps", "label")}
+
+
+async def fetch_dataset(
+    dataset: dict,
+    period: dict,
+    project_id: int,
+    current_user: User,
+    db: AsyncSession,
+    refresh: bool = False,
+) -> List[Dict[str, Any]]:
+    """Fetch dataset rows (state 1), using the server-side cache."""
+    date_from, date_to = get_date_range(period)
+    cache_key = _dataset_cache_key(project_id, _dataset_source_params(dataset), date_from, date_to)
+
+    if not refresh:
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+    dataset_type = dataset.get("type")
+    if dataset_type == "direct":
+        integration = await get_direct_integration(project_id, current_user, db)
+        campaign_ids = dataset.get("campaign_ids") or []
+        rows = await fetch_direct_stats(
+            integration,
+            date_from,
+            date_to,
+            campaign_ids=campaign_ids if campaign_ids else None,
+            group_by=dataset.get("group_by") or "campaign",
+            direct_fields=dataset.get("fields"),
+            include_vat=dataset.get("include_vat", True),
+        )
+    elif dataset_type == "metrika":
+        rows = await fetch_metrika_rows(
+            dataset, date_from, date_to, project_id, current_user, db
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown dataset type: {dataset_type}"
+        )
+
+    _cache_put(cache_key, rows)
+    return rows
+
+
+async def fetch_metrika_rows(
+    source: dict,
+    date_from: str,
+    date_to: str,
+    project_id: int,
+    current_user: User,
+    db: AsyncSession,
+) -> List[Dict[str, Any]]:
+    """Fetch and normalize Metrika rows (shared by v1 and v2 pipelines)."""
+    integration = await get_metrika_integration(project_id, current_user, db)
+    counter_id = source.get("counter_id")
+    goals = source.get("goals") or []
+    config_metrics = source.get("metrics")
+    config_dimensions = source.get("dimensions")
+
+    if not counter_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="counter_id is required for Metrika source"
+        )
+
+    metrics = config_metrics if config_metrics else ["ym:s:visits", "ym:s:users", "ym:s:bounceRate"]
+    if goals:
+        metrics = list(metrics) + [f"ym:s:goal{g}reaches" for g in goals]
+    metrics_str = ",".join(metrics) if isinstance(metrics, list) else metrics
+
+    dimensions = config_dimensions if config_dimensions else ["ym:s:UTMSource", "ym:s:UTMCampaign"]
+    dimensions_str = ",".join(dimensions) if isinstance(dimensions, list) else dimensions
+
+    result = await call_metrika_api(
+        "stat/v1/data",
+        {
+            "ids": counter_id,
+            "date1": date_from,
+            "date2": date_to,
+            "metrics": metrics_str,
+            "dimensions": dimensions_str,
+            "accuracy": "full",
+            "limit": 10000,
+        },
+        integration.access_token,
+    )
+
+    data_result = result.get("data", [])
+    query = result.get("query", {})
+    metric_names = [m.replace("ym:s:", "") for m in query.get("metrics", [])]
+    dimension_keys = query.get("dimensions", [])
+
+    rows = []
+    for item in data_result:
+        dims = item.get("dimensions", [])
+        mets = item.get("metrics", [])
+        row = {}
+        for i, dim in enumerate(dims):
+            key = dimension_keys[i].replace("ym:s:", "").replace(":", "_") if i < len(dimension_keys) else f"dim_{i}"
+            row[key] = dim.get("name")
+        for i, m in enumerate(mets):
+            metric_name = metric_names[i] if i < len(metric_names) else f"metric_{i}"
+            row[metric_name] = m
+        rows.append(row)
+
+    return rows
+
+
+def _result_table(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build {columns, data, row_count}; columns = union over all rows."""
+    columns: List[str] = []
+    seen = set()
+    for row in rows:
+        for key in row.keys():
+            if key not in seen:
+                seen.add(key)
+                columns.append(key)
+    return {"columns": columns, "data": rows, "row_count": len(rows)}
+
+
+def _run_steps(dataset_id: str, rows: List[Dict[str, Any]], steps: List[dict]) -> List[Dict[str, Any]]:
+    """Apply dataset steps (state 2) in an isolated namespace."""
+    prepared = [{**step, "source": dataset_id} for step in steps]
+    pipeline = TransformationPipeline(prepared)
+    try:
+        result = pipeline.run({dataset_id: rows})
+    except TransformationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Датасет '{dataset_id}', ошибка шага: {e}",
+        )
+    return result.get(dataset_id, rows)
+
+
+async def run_pipeline_v2(
+    config: dict,
+    project_id: int,
+    current_user: User,
+    db: AsyncSession,
+    stage: str = "final",
+    dataset_id: Optional[str] = None,
+    refresh: bool = False,
+) -> Dict[str, Any]:
+    """Run the staged pipeline.
+
+    Стадии: fetched (состояние 1, один датасет) -> transformed (состояние 2,
+    один датасет) -> merged (состояние 3а, после сшивки) -> final (после
+    группировки; то, что уходит в экспорт).
+    """
+    datasets = config.get("datasets") or []
+    period = config.get("period") or {}
+
+    if not datasets:
+        return {"columns": [], "data": [], "row_count": 0}
+
+    ids = [d.get("id") for d in datasets]
+    if len(ids) != len(set(ids)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dataset ids must be unique"
+        )
+
+    # Для стадий одного датасета не выгружаем остальные
+    if stage in ("fetched", "transformed"):
+        target_id = dataset_id or ids[0]
+        target = next((d for d in datasets if d.get("id") == target_id), None)
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Dataset '{target_id}' not found"
+            )
+        rows = await fetch_dataset(target, period, project_id, current_user, db, refresh)
+        if stage == "transformed" and target.get("steps"):
+            rows = _run_steps(target_id, rows, target["steps"])
+        return _result_table(rows)
+
+    # Полный прогон: все датасеты + их шаги
+    data: Dict[str, List[Dict[str, Any]]] = {}
+    for dataset in datasets:
+        ds_id = dataset.get("id")
+        rows = await fetch_dataset(dataset, period, project_id, current_user, db, refresh)
+        if dataset.get("steps"):
+            rows = _run_steps(ds_id, rows, dataset["steps"])
+        data[ds_id] = rows
+
+    # Состояние 3а: сшивка
+    merge = config.get("merge") or {}
+    result_key = config.get("result_dataset") or ids[0]
+    if merge.get("enabled"):
+        left = merge.get("left") or ids[0]
+        right = merge.get("right") or (ids[1] if len(ids) > 1 else None)
+        join_config = {
+            "type": "join",
+            "left": left,
+            "right": right,
+            "left_on": merge.get("left_key"),
+            "right_on": merge.get("right_key"),
+            "how": merge.get("how") or "left",
+        }
+        pipeline = TransformationPipeline([join_config])
+        try:
+            data = pipeline.run(data)
+        except TransformationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ошибка сшивки: {e}",
+            )
+        result_key = left
+
+    if stage == "merged":
+        return _result_table(data.get(result_key, []))
+
+    # Состояние 3б: группировка результата
+    grouping = config.get("grouping") or {}
+    if grouping.get("enabled") and grouping.get("columns"):
+        group_config = {
+            "type": "group_by",
+            "source": result_key,
+            "columns": grouping.get("columns"),
+            "aggregations": grouping.get("aggregations") or {},
+        }
+        pipeline = TransformationPipeline([group_config])
+        try:
+            data = pipeline.run(data)
+        except TransformationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ошибка группировки: {e}",
+            )
+
+    return _result_table(data.get(result_key, []))
 
 
 async def run_report_pipeline(
@@ -348,9 +585,20 @@ async def preview_report(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Preview report data without saving or exporting."""
+    """Preview report data without saving or exporting.
+
+    Для конфигов v2 поддерживает стадии пайплайна (fetched/transformed/
+    merged/final) и превью отдельного датасета.
+    """
     await verify_project_access(project_id, current_user, db)
     config = request.config if isinstance(request.config, dict) else request.config.model_dump()
+    if config.get("version") == 2:
+        return await run_pipeline_v2(
+            config, project_id, current_user, db,
+            stage=request.stage,
+            dataset_id=request.dataset_id,
+            refresh=request.refresh,
+        )
     result = await run_report_pipeline(config, project_id, current_user, db)
     return result
 
@@ -389,20 +637,28 @@ async def run_report(
     
     try:
         # Run pipeline
-        data_result = await run_report_pipeline(
-            report.config,
-            project_id,
-            current_user,
-            db
-        )
-        
+        if report.config.get("version") == 2:
+            data_result = await run_pipeline_v2(
+                report.config, project_id, current_user, db, stage="final"
+            )
+        else:
+            data_result = await run_report_pipeline(
+                report.config,
+                project_id,
+                current_user,
+                db
+            )
+
         # Get export config (default to google_sheets so old reports still export)
         export_config = report.config.get("export") or {}
         export_type = export_config.get("type") or "google_sheets"
-        
+
         if export_type == "google_sheets":
             sheets_integration = await get_sheets_integration(project_id, current_user, db)
             spreadsheet_id = export_config.get("spreadsheet_id")
+            if export_config.get("create_new"):
+                # Явный режим «новая таблица при каждом запуске»
+                spreadsheet_id = None
             if spreadsheet_id is not None and isinstance(spreadsheet_id, str) and not spreadsheet_id.strip():
                 spreadsheet_id = None
             sheet_name = (export_config.get("sheet_name") or report.name or "Report").strip() or "Report"
