@@ -1,4 +1,5 @@
 """Google Sheets API integration."""
+import logging
 from typing import List, Optional, Any
 from datetime import datetime
 from urllib.parse import quote
@@ -13,6 +14,8 @@ from app.database import get_db
 from app.models import User, Project, Integration
 from app.auth import get_current_user
 from app.integrations import verify_project_access, refresh_integration_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sheets")
 
@@ -238,6 +241,13 @@ async def do_export_to_sheets(integration: Integration, request: ExportRequest) 
             
             if sheets_response.status_code != 200:
                 err_body = sheets_response.text or ""
+                # Всегда логируем полный ответ Google при ошибке (для отладки 403)
+                logger.warning(
+                    "Google Sheets API error: status=%s, spreadsheet_id_len=%s, body=%s",
+                    sheets_response.status_code,
+                    len(spreadsheet_id),
+                    err_body[:1000],
+                )
                 err_json = None
                 try:
                     if err_body.strip().startswith("{"):
