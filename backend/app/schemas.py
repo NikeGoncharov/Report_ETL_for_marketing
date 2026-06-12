@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, EmailStr
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Literal, Union
+from typing import Optional, List, Dict, Any, Literal
 
 
 # ============== User Schemas ==============
@@ -69,67 +69,7 @@ class IntegrationResponse(BaseModel):
         from_attributes = True
 
 
-# ============== Report Schemas ==============
-
-class ReportSourceConfig(BaseModel):
-    id: str
-    type: str  # 'direct' or 'metrika'
-    campaign_ids: Optional[List[int]] = None
-    counter_id: Optional[int] = None
-    goals: Optional[List[int]] = None
-    # Direct: optional field selection and grouping
-    direct_fields: Optional[List[str]] = None
-    direct_group_by: Optional[str] = None  # 'day' | 'campaign'
-    # Metrika: optional metrics and dimensions (API names, e.g. ym:s:visits)
-    metrics: Optional[List[str]] = None
-    dimensions: Optional[List[str]] = None
-    # Per-source transformations (applied before global merge)
-    source_transformations: Optional[List["TransformationConfig"]] = None
-
-
-class TransformationConfig(BaseModel):
-    type: str  # 'extract', 'group_by', 'join', 'rename', 'filter', 'calculate', 'sort'
-    source: Optional[str] = None
-    left: Optional[str] = None
-    right: Optional[str] = None
-    column: Optional[str] = None
-    columns: Optional[List[str]] = None
-    pattern: Optional[str] = None
-    output_column: Optional[str] = None
-    aggregations: Optional[dict] = None
-    on: Optional[str] = None
-    left_on: Optional[str] = None  # join: ключ слева (если имена ключей различаются)
-    right_on: Optional[str] = None  # join: ключ справа
-    how: Optional[str] = None
-    output: Optional[str] = None  # join: куда писать результат
-    mapping: Optional[dict] = None  # for rename
-    operator: Optional[str] = None  # for filter
-    value: Optional[Any] = None  # for filter
-    formula: Optional[str] = None  # for calculate
-    descending: Optional[bool] = None  # for sort
-
-
-class ExportConfig(BaseModel):
-    type: str = "google_sheets"
-    spreadsheet_id: Optional[str] = None
-    sheet_name: Optional[str] = None
-    create_new: bool = False
-
-
-class PeriodConfig(BaseModel):
-    type: str  # 'last_7_days', 'last_30_days', 'custom'
-    date_from: Optional[str] = None
-    date_to: Optional[str] = None
-
-
-class ReportConfig(BaseModel):
-    sources: List[ReportSourceConfig]
-    period: PeriodConfig
-    transformations: List[TransformationConfig] = []
-    export: ExportConfig
-
-
-# ============== Report Config v2 (staged pipeline) ==============
+# ============== Report Config (staged pipeline) ==============
 # Пайплайн отчёта: датасеты (состояние 1) -> шаги датасета (состояние 2)
 # -> сшивка + группировка (состояние 3) -> экспорт.
 # extra="forbid": неизвестное поле — это ошибка 422, а не молчаливая потеря.
@@ -141,7 +81,7 @@ PERIOD_TYPES = Literal[
 ]
 
 
-class PeriodConfigV2(BaseModel):
+class PeriodConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: PERIOD_TYPES = "last_30_days"
@@ -207,7 +147,7 @@ class GroupingConfig(BaseModel):
     aggregations: Dict[str, str] = {}
 
 
-class ExportConfigV2(BaseModel):
+class ExportConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["google_sheets"] = "google_sheets"
@@ -221,26 +161,22 @@ class ReportConfigV2(BaseModel):
 
     version: Literal[2]
     datasets: List[DatasetConfig]
-    period: PeriodConfigV2
+    period: PeriodConfig
     merge: MergeConfig = MergeConfig()
     grouping: GroupingConfig = GroupingConfig()
     # Какой датасет считать результатом, если сшивка выключена (по умолчанию первый)
     result_dataset: Optional[str] = None
-    export: ExportConfigV2 = ExportConfigV2()
-
-
-# Union: сначала пробуем v2 (требует version=2), затем легаси-схему
-AnyReportConfig = Union[ReportConfigV2, ReportConfig]
+    export: ExportConfig = ExportConfig()
 
 
 class ReportCreate(BaseModel):
     name: str
-    config: AnyReportConfig
+    config: ReportConfigV2
 
 
 class ReportUpdate(BaseModel):
     name: Optional[str] = None
-    config: Optional[AnyReportConfig] = None
+    config: Optional[ReportConfigV2] = None
 
 
 class ReportResponse(BaseModel):
@@ -274,7 +210,7 @@ class ReportRunResponse(BaseModel):
 
 class PreviewRequest(BaseModel):
     """Preview accepts full config as dict so frontend field selection is not stripped."""
-    config: dict  # ReportConfig-like; use .get() in pipeline to preserve direct_fields, direct_group_by, etc.
+    config: dict  # конфиг v2 как dict — черновик из конструктора, валидируется при выполнении
     # Состояние пайплайна, до которого выполнить превью (только для конфигов v2):
     # fetched | transformed | merged | final
     stage: Literal["fetched", "transformed", "merged", "final"] = "final"

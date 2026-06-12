@@ -13,7 +13,7 @@ from app.database import get_db
 from app.models import User, Project, Integration, Report, ReportRun
 from app.schemas import (
     ReportCreate, ReportUpdate, ReportResponse,
-    ReportRunResponse, PreviewRequest, PreviewResponse, ReportConfig
+    ReportRunResponse, PreviewRequest, PreviewResponse
 )
 from app.auth import get_current_user
 from app.integrations import verify_project_access, refresh_integration_token
@@ -71,45 +71,7 @@ def get_date_range(period_config: dict) -> tuple[str, str]:
     return str(date_from), str(date_to)
 
 
-async def fetch_source_data(
-    source_config: dict,
-    period: dict,
-    project_id: int,
-    current_user: User,
-    db: AsyncSession
-) -> List[Dict[str, Any]]:
-    """Fetch data from a source (Direct or Metrika)."""
-    source_type = source_config.get("type")
-    date_from, date_to = get_date_range(period)
-    
-    if source_type == "direct":
-        integration = await get_direct_integration(project_id, current_user, db)
-        campaign_ids = source_config.get("campaign_ids") or []
-        group_by = source_config.get("direct_group_by", "campaign")
-        direct_fields = source_config.get("direct_fields")
-        data = await fetch_direct_stats(
-            integration,
-            date_from,
-            date_to,
-            campaign_ids=campaign_ids if campaign_ids else None,
-            group_by=group_by,
-            direct_fields=direct_fields,
-        )
-        return data
-    
-    elif source_type == "metrika":
-        return await fetch_metrika_rows(
-            source_config, date_from, date_to, project_id, current_user, db
-        )
-
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown source type: {source_type}"
-        )
-
-
-# ============== Pipeline v2: датасеты -> шаги -> сшивка -> группировка ==============
+# ============== Pipeline: датасеты -> шаги -> сшивка -> группировка ==============
 
 # Кэш сырых выгрузок (состояние 1): пока пользователь итерирует трансформации
 # в конструкторе, внешние API не дёргаются повторно. Кэш в памяти процесса —
@@ -384,69 +346,6 @@ async def run_pipeline_v2(
     return _result_table(data.get(result_key, []))
 
 
-async def run_report_pipeline(
-    config: dict,
-    project_id: int,
-    current_user: User,
-    db: AsyncSession
-) -> Dict[str, Any]:
-    """Run the full report pipeline: fetch -> transform -> return data."""
-    sources = config.get("sources", [])
-    period = config.get("period", {"type": "last_7_days"})
-    transformations = config.get("transformations", [])
-    
-    # Fetch data from all sources
-    data = {}
-    for source_config in sources:
-        source_id = source_config.get("id", source_config.get("type"))
-        source_data = await fetch_source_data(
-            source_config, period, project_id, current_user, db
-        )
-        # Per-source transformations
-        source_transformations = source_config.get("source_transformations") or []
-        if source_transformations:
-            pipeline = TransformationPipeline(source_transformations)
-            try:
-                single_source_data = {source_id: source_data}
-                single_source_data = pipeline.run(single_source_data)
-                source_data = single_source_data.get(source_id, source_data)
-            except TransformationError as e:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Source '{source_id}' transformation error: {e}",
-                )
-        data[source_id] = source_data
-
-    # Apply global transformations
-    if transformations:
-        pipeline = TransformationPipeline(transformations)
-        try:
-            data = pipeline.run(data)
-        except TransformationError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Transformation error: {e}"
-            )
-    
-    # Get the result (first source or specified output)
-    if data:
-        result_key = list(data.keys())[0]
-        result_data = data[result_key]
-        
-        # Get columns from data
-        columns = []
-        if result_data:
-            columns = list(result_data[0].keys())
-        
-        return {
-            "columns": columns,
-            "data": result_data,
-            "row_count": len(result_data)
-        }
-    
-    return {"columns": [], "data": [], "row_count": 0}
-
-
 # ============== Report CRUD ==============
 
 @router.get("/projects/{project_id}/reports", response_model=List[ReportResponse])
@@ -592,15 +491,17 @@ async def preview_report(
     """
     await verify_project_access(project_id, current_user, db)
     config = request.config if isinstance(request.config, dict) else request.config.model_dump()
-    if config.get("version") == 2:
-        return await run_pipeline_v2(
-            config, project_id, current_user, db,
-            stage=request.stage,
-            dataset_id=request.dataset_id,
-            refresh=request.refresh,
+    if config.get("version") != 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported config version: expected version 2"
         )
-    result = await run_report_pipeline(config, project_id, current_user, db)
-    return result
+    return await run_pipeline_v2(
+        config, project_id, current_user, db,
+        stage=request.stage,
+        dataset_id=request.dataset_id,
+        refresh=request.refresh,
+    )
 
 
 @router.post("/projects/{project_id}/reports/{report_id}/run", response_model=ReportRunResponse)
@@ -636,20 +537,17 @@ async def run_report(
     await db.refresh(run)
     
     try:
-        # Run pipeline
-        if report.config.get("version") == 2:
-            data_result = await run_pipeline_v2(
-                report.config, project_id, current_user, db, stage="final"
-            )
-        else:
-            data_result = await run_report_pipeline(
-                report.config,
-                project_id,
-                current_user,
-                db
+        if report.config.get("version") != 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Отчёт в устаревшем формате конфигурации — пересоздайте его в конструкторе"
             )
 
-        # Get export config (default to google_sheets so old reports still export)
+        # Run pipeline
+        data_result = await run_pipeline_v2(
+            report.config, project_id, current_user, db, stage="final"
+        )
+
         export_config = report.config.get("export") or {}
         export_type = export_config.get("type") or "google_sheets"
 

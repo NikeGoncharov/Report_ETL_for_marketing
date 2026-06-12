@@ -176,11 +176,13 @@ async def test_report(db_session: AsyncSession, test_project: Project) -> Report
         project_id=test_project.id,
         name="Test Report",
         config={
-            "sources": [
-                {"id": "direct", "type": "direct", "campaign_ids": []}
+            "version": 2,
+            "datasets": [
+                {"id": "direct", "type": "direct", "campaign_ids": [], "steps": []}
             ],
             "period": {"type": "last_7_days"},
-            "transformations": [],
+            "merge": {"enabled": False},
+            "grouping": {"enabled": False},
             "export": {"type": "google_sheets"}
         }
     )

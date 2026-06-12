@@ -11,17 +11,20 @@ from tests.conftest import assert_report_response
 def get_valid_report_config():
     """Return a valid report configuration for tests."""
     return {
-        "sources": [
+        "version": 2,
+        "datasets": [
             {
                 "id": "direct",
                 "type": "direct",
-                "campaign_ids": []
+                "campaign_ids": [],
+                "steps": []
             }
         ],
         "period": {
             "type": "last_7_days"
         },
-        "transformations": [],
+        "merge": {"enabled": False},
+        "grouping": {"enabled": False},
         "export": {
             "type": "google_sheets"
         }
@@ -110,69 +113,60 @@ class TestCreateReport:
         self, client: AsyncClient, auth_headers, test_project
     ):
         """Should create report with Metrika source."""
-        config = {
-            "sources": [
-                {
-                    "id": "metrika",
-                    "type": "metrika",
-                    "counter_id": 12345678,
-                    "goals": [1, 2, 3]
-                }
-            ],
-            "period": {
-                "type": "last_30_days"
-            },
-            "transformations": [],
-            "export": {
-                "type": "google_sheets",
-                "spreadsheet_id": "test_sheet_id"
+        config = get_valid_report_config()
+        config["datasets"] = [
+            {
+                "id": "metrika",
+                "type": "metrika",
+                "counter_id": 12345678,
+                "goals": [1, 2, 3],
+                "steps": []
             }
+        ]
+        config["export"] = {
+            "type": "google_sheets",
+            "spreadsheet_id": "test_sheet_id"
         }
-        
+
         response = await client.post(
             f"/projects/{test_project.id}/reports",
             headers=auth_headers,
             json={"name": "Metrika Report", "config": config}
         )
-        
+
         assert response.status_code == 201
         data = response.json()
-        assert data["config"]["sources"][0]["type"] == "metrika"
+        assert data["config"]["datasets"][0]["type"] == "metrika"
+        assert data["config"]["datasets"][0]["goals"] == [1, 2, 3]
     
     @pytest.mark.asyncio
     async def test_create_report_with_transformations(
         self, client: AsyncClient, auth_headers, test_project
     ):
-        """Should create report with transformations."""
-        config = {
-            "sources": [{"id": "direct", "type": "direct"}],
-            "period": {"type": "last_7_days"},
-            "transformations": [
-                {
-                    "type": "rename",
-                    "source": "direct",
-                    "mapping": {"campaign_id": "ID кампании"}
-                },
-                {
-                    "type": "filter",
-                    "source": "direct",
-                    "column": "status",
-                    "operator": "eq",
-                    "value": "ACTIVE"
-                }
-            ],
-            "export": {"type": "google_sheets"}
-        }
-        
+        """Should create report with transformation steps."""
+        config = get_valid_report_config()
+        config["datasets"][0]["steps"] = [
+            {
+                "type": "rename",
+                "mapping": {"campaignid": "ID кампании"}
+            },
+            {
+                "type": "filter",
+                "column": "status",
+                "operator": "eq",
+                "value": "ACTIVE"
+            }
+        ]
+
         response = await client.post(
             f"/projects/{test_project.id}/reports",
             headers=auth_headers,
             json={"name": "Report with Transforms", "config": config}
         )
-        
+
         assert response.status_code == 201
         data = response.json()
-        assert len(data["config"]["transformations"]) == 2
+        assert len(data["config"]["datasets"][0]["steps"]) == 2
     
     @pytest.mark.asyncio
     async def test_create_report_unauthenticated(
@@ -302,13 +296,12 @@ class TestUpdateReport:
         self, client: AsyncClient, auth_headers, test_project, test_report
     ):
         """Should update report config."""
-        new_config = {
-            "sources": [{"id": "metrika", "type": "metrika", "counter_id": 99999}],
-            "period": {"type": "last_30_days"},
-            "transformations": [],
-            "export": {"type": "google_sheets"}
-        }
-        
+        new_config = get_valid_report_config()
+        new_config["datasets"] = [
+            {"id": "metrika", "type": "metrika", "counter_id": 99999, "steps": []}
+        ]
+        new_config["period"] = {"type": "last_30_days"}
+
         response = await client.put(
             f"/projects/{test_project.id}/reports/{test_report.id}",
             headers=auth_headers,

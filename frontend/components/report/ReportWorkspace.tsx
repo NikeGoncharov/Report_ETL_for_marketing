@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Catalog, DatasetConfig, DatasetType, DirectCampaign, MetrikaCounter,
   PipelineStage, PreviewResult, Report, ReportConfigV2, ReportRun,
-  defaultDataset, upgradeConfig,
+  defaultDataset, ensureConfigV2,
 } from "../../types/report";
 import { catalogApi, directApi, metrikaApi, reportsApi } from "../../lib/api";
 import PeriodPicker from "./PeriodPicker";
@@ -21,7 +21,7 @@ export default function ReportWorkspace({
   report: Report;
 }) {
   const [name, setName] = useState(report.name);
-  const [config, setConfig] = useState<ReportConfigV2>(() => upgradeConfig(report.config));
+  const [config, setConfig] = useState<ReportConfigV2>(() => ensureConfigV2(report.config));
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [campaigns, setCampaigns] = useState<DirectCampaign[]>([]);
   const [counters, setCounters] = useState<MetrikaCounter[]>([]);

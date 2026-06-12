@@ -98,9 +98,10 @@ class TestV2ConfigValidation:
         assert response.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_legacy_v1_config_still_accepted(
+    async def test_legacy_v1_config_rejected(
         self, client: AsyncClient, auth_headers, test_project
     ):
+        """Старый формат (sources/transformations) больше не принимается."""
         response = await client.post(
             f"/projects/{test_project.id}/reports",
             json={
@@ -115,8 +116,20 @@ class TestV2ConfigValidation:
             headers=auth_headers,
         )
 
-        assert response.status_code == 201
-        assert "version" not in response.json()["config"]
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_legacy_preview_rejected(
+        self, client: AsyncClient, auth_headers, test_project
+    ):
+        response = await client.post(
+            f"/projects/{test_project.id}/reports/preview",
+            json={"config": {"sources": [], "period": {"type": "last_7_days"}}},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 400
+        assert "version" in response.json()["detail"]
 
 
 class TestV2PreviewStages:
