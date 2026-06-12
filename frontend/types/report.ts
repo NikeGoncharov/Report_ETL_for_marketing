@@ -187,6 +187,25 @@ export function defaultConfig(): ReportConfigV2 {
   };
 }
 
+// Поля, которые знает StepConfig на бэкенде (schemas.py, extra=forbid).
+// Легаси-шаги несут лишние ключи (source/left/right/on/how/output, часто
+// как null после model_dump) — всё вне белого списка отбрасываем, иначе
+// сохранение сконвертированного отчёта упадёт с 422.
+const STEP_KEYS = [
+  "type", "column", "columns", "pattern", "output_column",
+  "aggregations", "mapping", "operator", "value", "formula", "descending",
+] as const;
+
+function toStep(raw: Record<string, any>): StepConfig {
+  const step: Record<string, any> = {};
+  for (const key of STEP_KEYS) {
+    if (raw[key] !== undefined && raw[key] !== null) {
+      step[key] = raw[key];
+    }
+  }
+  return step as StepConfig;
+}
+
 // Конверсия легаси-конфига (v1: sources/transformations) в v2.
 // Используется при открытии старых отчётов в конструкторе; сохранение
 // перезапишет конфиг уже в формате v2.
@@ -197,6 +216,7 @@ export function upgradeConfig(raw: Record<string, any>): ReportConfigV2 {
 
   const config = defaultConfig();
   const sources: any[] = Array.isArray(raw?.sources) ? raw.sources : [];
+  const stepTypes = ["extract", "filter", "rename", "calculate", "sort", "group_by"];
 
   config.datasets = sources.map((s) => {
     const ds: DatasetConfig = {
@@ -204,7 +224,7 @@ export function upgradeConfig(raw: Record<string, any>): ReportConfigV2 {
       type: s.type === "metrika" ? "metrika" : "direct",
       campaign_ids: s.campaign_ids ?? [],
       fields: s.direct_fields ?? undefined,
-      group_by: s.direct_group_by ?? "campaign",
+      group_by: s.direct_group_by === "day" ? "day" : "campaign",
       include_vat: true,
       counter_id: s.counter_id ?? undefined,
       metrics: s.metrics ?? undefined,
@@ -212,14 +232,15 @@ export function upgradeConfig(raw: Record<string, any>): ReportConfigV2 {
       goals: s.goals ?? [],
       steps: [],
     };
-    const stepTypes = ["extract", "filter", "rename", "calculate", "sort", "group_by"];
     ds.steps = (s.source_transformations || [])
       .filter((t: any) => stepTypes.includes(t.type))
-      .map(({ source: _src, left: _l, right: _r, on: _on, how: _how, ...rest }: any) => rest);
+      .map(toStep);
     return ds;
   });
 
-  config.period = raw?.period?.type ? raw.period : { type: "last_30_days" };
+  config.period = raw?.period?.type
+    ? { type: raw.period.type, date_from: raw.period.date_from ?? null, date_to: raw.period.date_to ?? null }
+    : { type: "last_30_days" };
 
   // Глобальные трансформации: join -> merge, group_by -> grouping,
   // остальные раскладываем по датасетам как шаги.
@@ -240,11 +261,10 @@ export function upgradeConfig(raw: Record<string, any>): ReportConfigV2 {
         columns: t.columns || [],
         aggregations: t.aggregations || {},
       };
-    } else if (t.source) {
+    } else if (t.source && stepTypes.includes(t.type)) {
       const ds = config.datasets.find((d) => d.id === t.source);
-      if (ds && t.type !== "join") {
-        const { source: _src, ...rest } = t;
-        ds.steps.push(rest as StepConfig);
+      if (ds) {
+        ds.steps.push(toStep(t));
       }
     }
   }

@@ -53,7 +53,7 @@ export default function ReportWorkspace({
     try {
       await reportsApi.update(projectId, report.id, {
         name,
-        config: config as unknown as Record<string, unknown>,
+        config: sanitizeConfig(config) as unknown as Record<string, unknown>,
       });
       dirty.current = false;
       setSavedAt(new Date());
@@ -297,4 +297,30 @@ function mergeColumns(prev: string[], next: string[]): string[] {
     if (!result.includes(col)) result.push(col);
   }
   return result;
+}
+
+// Недозаполненные строки редакторов (пустой ключ агрегации/переименования)
+// не должны попадать в сохранённый конфиг.
+function dropEmptyKeys(record?: Record<string, string>): Record<string, string> | undefined {
+  if (!record) return record;
+  const cleaned = Object.fromEntries(Object.entries(record).filter(([k]) => k.trim() !== ""));
+  return cleaned;
+}
+
+function sanitizeConfig(config: ReportConfigV2): ReportConfigV2 {
+  return {
+    ...config,
+    datasets: config.datasets.map((d) => ({
+      ...d,
+      steps: d.steps.map((s) => ({
+        ...s,
+        aggregations: dropEmptyKeys(s.aggregations),
+        mapping: dropEmptyKeys(s.mapping),
+      })),
+    })),
+    grouping: {
+      ...config.grouping,
+      aggregations: dropEmptyKeys(config.grouping.aggregations) || {},
+    },
+  };
 }
