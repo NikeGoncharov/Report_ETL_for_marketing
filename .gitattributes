@@ -1,0 +1,4 @@
+# Shell-скрипты, попадающие в Linux-контейнеры, должны иметь LF-переводы строк:
+# CRLF ломает shebang ("#!/bin/sh\r" -> bad interpreter) при запуске в контейнере.
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf

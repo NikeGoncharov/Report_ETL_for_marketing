@@ -1,0 +1,24 @@
+# Виртуальные окружения (в образ ставим зависимости заново)
+venv/
+.venv/
+env/
+
+# Байткод/кэш Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+alembic/__pycache__/
+
+# Секреты и данные — НЕ должны попадать в образ
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-journal
+
+# git
+.git
+.gitignore

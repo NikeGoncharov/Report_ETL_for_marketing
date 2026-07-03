@@ -1,0 +1,42 @@
+# RePort — self-hosted deploy (домашний сервер за Cloudflare Tunnel + Caddy).
+# Полный runbook (порядок, перенос данных, откат): C:\git\homeserver\report-migration-runbook.md
+#
+# Сеть 'web' — ВНЕШНЯЯ, общая с Caddy. Создать один раз: docker network create web
+# Наружу порты публикует ТОЛЬКО Caddy (в своём compose). Здесь портов нет вообще:
+# backend/frontend доступны Caddy по DNS-именам внутри 'web', cloudflared — только исходящий.
+services:
+  report-backend:
+    build: ./backend
+    env_file: .env
+    # UID:GID хостового владельца ./data — чтобы alembic и запись в data.db работали
+    # (перенесённый с ВМ data.db обычно принадлежит UID 1000; контейнерный UID 10001
+    #  иначе упрётся в "attempt to write a readonly database").
+    # Проверь ПЕРЕД первым up:  ls -n ./data   — если владелец не 1000, подставь его UID:GID.
+    user: "1000:1000"
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    networks:
+      - web
+
+  report-frontend:
+    build: ./frontend
+    restart: unless-stopped
+    networks:
+      - web
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    restart: unless-stopped
+    networks:
+      - web
+    # НЕТ ports: — только исходящие соединения к edge Cloudflare.
+
+networks:
+  web:
+    external: true
+    name: web

@@ -1,0 +1,19 @@
+# Зависимости и сборки — ставятся/собираются в образе заново
+node_modules/
+.next/
+out/
+build/
+
+# ВСЕ env-файлы вон из контекста: гарантирует, что NEXT_PUBLIC_API_URL
+# (напр. из .env.example/.env.local) НЕ просочится в build-time инлайн.
+.env*
+
+# Логи и git
+npm-debug.log*
+yarn-error.log*
+.git
+.gitignore
+
+# Docker-файлы самого фронта
+Dockerfile
+.dockerignore

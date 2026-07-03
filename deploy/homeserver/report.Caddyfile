@@ -1,0 +1,21 @@
+# Блок сайта RePort для ОБЩЕГО Caddy домашнего сервера.
+# Добавить в Caddyfile сервера (или заимпортить: import /etc/caddy/sites/*.caddy).
+#
+# TLS терминируется на Cloudflare; cloudflared -> Caddy идёт открытым HTTP,
+# поэтому адрес сайта — http:// (это ОТКЛЮЧАЕТ ACME/Let's Encrypt для сайта,
+# что и нужно: сертификат выдаёт край Cloudflare, а не Caddy).
+
+http://report-analytics.ru, http://www.report-analytics.ru {
+	# /api/* -> backend, СНИМАЯ префикс /api (как прод-nginx: rewrite ^/api/(.*) /$1 break).
+	# Backend-роутеры используют голые пути (/integrations, /projects, ...), /api обязателен к срезу.
+	handle_path /api/* {
+		reverse_proxy report-backend:8000
+	}
+
+	# Всё остальное -> frontend
+	reverse_proxy report-frontend:3000
+}
+
+# ПРИМЕЧАНИЕ про www: чтобы www реально дошёл до Caddy, в туннеле нужен ОТДЕЛЬНЫЙ
+# Public Hostname www.report-analytics.ru -> http://caddy:80 (иначе Cloudflare Tunnel
+# отдаст 404 на незамапленный хост). Не нужен www — убери его из строки выше.

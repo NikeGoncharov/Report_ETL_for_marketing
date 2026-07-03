@@ -65,3 +65,9 @@ build/
 
 # Alembic
 /backend/alembic/__pycache__/
+
+# ========================
+# Home-server Docker deploy
+# ========================
+/data/
+/backups/
