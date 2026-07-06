@@ -31,6 +31,13 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    # Форвардим внешний DNS напрямую на публичные резолверы, а не на роутер:
+    # домашний DNS (192.168.15.1) криво отвечает на SRV-запись region1.v2.argotunnel.com
+    # ("server misbehaving"). Встроенный DNS Docker (127.0.0.11) остаётся — разрешение
+    # имён контейнеров (caddy) продолжает работать, меняется только апстрим форвардинга.
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
     restart: unless-stopped
     networks:
       - web

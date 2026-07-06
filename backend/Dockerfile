@@ -49,6 +49,10 @@ COPY app/ ./app/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./alembic.ini
 
+# Админ-CLI (список юзеров, установка пароля). Запуск внутри контейнера:
+#   docker compose exec report-backend python manage.py set-password <email> '<пароль>'
+COPY manage.py ./manage.py
+
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
