@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="RePort API",
+    title="Report API",
     description="Marketing analytics service for Yandex.Direct, Metrika and Google Sheets",
     version="0.1.0",
     lifespan=lifespan

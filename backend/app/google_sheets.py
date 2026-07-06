@@ -204,7 +204,7 @@ async def do_export_to_sheets(integration: Integration, request: ExportRequest) 
     async with httpx.AsyncClient() as client:
         # Create new spreadsheet if needed
         if not spreadsheet_id:
-            title = request.title or f"RePort Export {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            title = request.title or f"Report Export {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             
             create_response = await client.post(
                 SHEETS_API_URL,

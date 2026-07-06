@@ -1,12 +1,12 @@
 [Unit]
-Description=RePort Frontend (Next.js)
+Description=Report Frontend (Next.js)
 After=network.target
 
 [Service]
 Type=simple
 User=user
 Group=user
-WorkingDirectory=/home/user/RePort/frontend
+WorkingDirectory=/home/user/Report/frontend
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10

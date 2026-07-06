@@ -148,7 +148,7 @@ export default function Layout({ children, title }: LayoutProps) {
       {/* Sidebar */}
       <aside className="sidebar" style={{ width: sidebarWidth }}>
         <Link href="/dashboard" className="sidebar-header">
-          <img src="/logo-white.png" alt="RePort" className="sidebar-logo" />
+          <img src="/logo-white.png" alt="Report" className="sidebar-logo" />
         </Link>
 
         <nav className="sidebar-nav">

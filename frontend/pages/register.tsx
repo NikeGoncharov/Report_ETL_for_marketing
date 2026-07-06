@@ -49,11 +49,11 @@ export default function Register() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <img src="/logo.png" alt="RePort" className="auth-logo" />
+        <img src="/logo.png" alt="Report" className="auth-logo" />
         
         <h1 className="auth-title">Регистрация</h1>
         <p className="auth-subtitle">
-          Создайте аккаунт RePort
+          Создайте аккаунт Report
         </p>
 
         <form onSubmit={handleSubmit}>

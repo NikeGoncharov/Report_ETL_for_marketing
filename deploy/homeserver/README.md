@@ -1,6 +1,6 @@
-# Домашний деплой RePort (Docker + Cloudflare Tunnel + Caddy)
+# Домашний деплой Report (Docker + Cloudflare Tunnel + Caddy)
 
-Перенос RePort с арендованной ВМ Yandex Cloud на self-hosted домашний сервер.
+Перенос Report с арендованной ВМ Yandex Cloud на self-hosted домашний сервер.
 Публичный домен `report-analytics.ru` сохраняется; наружу — через **Cloudflare Tunnel**
 (без белого IP и проброса портов), TLS терминируется на краю Cloudflare, а внутри
 маршрутизирует **Caddy**. Отличие от прод-ВМ: там был nginx + certbot + systemd,

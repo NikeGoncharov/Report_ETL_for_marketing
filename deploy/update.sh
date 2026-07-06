@@ -1,14 +1,14 @@
 #!/bin/bash
-# RePort Update Script
+# Report Update Script
 # Run as report user or root
 
 set -e
 
 APP_USER="user"
 APP_HOME="/home/$APP_USER"
-APP_DIR="$APP_HOME/RePort"
+APP_DIR="$APP_HOME/Report"
 
-echo "=== Updating RePort ==="
+echo "=== Updating Report ==="
 
 # Pull latest code
 echo "Pulling latest code..."

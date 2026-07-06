@@ -1,12 +1,12 @@
 [Unit]
-Description=RePort Backend (FastAPI)
+Description=Report Backend (FastAPI)
 After=network.target
 
 [Service]
 Type=simple
 User=user
 Group=user
-WorkingDirectory=/home/user/RePort/backend
+WorkingDirectory=/home/user/Report/backend
 Environment="PATH=/home/user/venv/bin"
 ExecStart=/home/user/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always

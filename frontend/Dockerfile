@@ -1,5 +1,5 @@
 # ============================================================
-# RePort frontend (Next.js 16 / React 19) — production (standalone)
+# Report frontend (Next.js 16 / React 19) — production (standalone)
 # Контекст сборки = ./frontend
 #
 # КРИТИЧНО: НЕ передавать NEXT_PUBLIC_API_URL (ни build-arg, ни ENV).

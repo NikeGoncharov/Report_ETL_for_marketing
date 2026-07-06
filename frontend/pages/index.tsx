@@ -21,7 +21,7 @@ export default function LandingPage() {
   if (checking) {
     return (
       <div className="landing-loading">
-        <img src="/logo.png" alt="RePort" className="landing-logo-small" />
+        <img src="/logo.png" alt="Report" className="landing-logo-small" />
         <p>Загрузка...</p>
       </div>
     );
@@ -145,7 +145,7 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <div className="landing-container">
           <div className="landing-footer-content">
-            <img src="/logo-white.png" alt="RePort" className="landing-logo-small" />
+            <img src="/logo-white.png" alt="Report" className="landing-logo-small" />
             <p>© 2026 Report. ETL-платформа для маркетинга.</p>
             <Link href="/privacy" className="landing-footer-link">
               Политика конфиденциальности

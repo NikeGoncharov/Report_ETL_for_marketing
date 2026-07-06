@@ -1,4 +1,4 @@
-# Блок сайта RePort для ОБЩЕГО Caddy домашнего сервера.
+# Блок сайта Report для ОБЩЕГО Caddy домашнего сервера.
 # Добавить в Caddyfile сервера (или заимпортить: import /etc/caddy/sites/*.caddy).
 #
 # TLS терминируется на Cloudflare; cloudflared -> Caddy идёт открытым HTTP,

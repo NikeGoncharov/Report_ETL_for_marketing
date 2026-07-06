@@ -1,4 +1,4 @@
-# RePort — self-hosted deploy (домашний сервер за Cloudflare Tunnel + Caddy).
+# Report — self-hosted deploy (домашний сервер за Cloudflare Tunnel + Caddy).
 # Полный runbook (порядок, перенос данных, откат): C:\git\homeserver\report-migration-runbook.md
 #
 # Сеть 'web' — ВНЕШНЯЯ, общая с Caddy. Создать один раз: docker network create web

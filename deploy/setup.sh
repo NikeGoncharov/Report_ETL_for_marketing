@@ -1,5 +1,5 @@
 #!/bin/bash
-# RePort Server Setup Script
+# Report Server Setup Script
 # Run as root: sudo bash setup.sh
 
 set -e
@@ -7,9 +7,9 @@ set -e
 # Configuration - change if needed
 APP_USER="user"
 APP_HOME="/home/$APP_USER"
-APP_DIR="$APP_HOME/RePort"
+APP_DIR="$APP_HOME/Report"
 
-echo "=== RePort Server Setup ==="
+echo "=== Report Server Setup ==="
 echo "User: $APP_USER"
 echo "Directory: $APP_DIR"
 echo ""
@@ -77,7 +77,7 @@ echo "Creating systemd services..."
 
 cat > /etc/systemd/system/report-backend.service << EOF
 [Unit]
-Description=RePort Backend (FastAPI)
+Description=Report Backend (FastAPI)
 After=network.target
 
 [Service]
@@ -100,7 +100,7 @@ EOF
 
 cat > /etc/systemd/system/report-frontend.service << EOF
 [Unit]
-Description=RePort Frontend (Next.js)
+Description=Report Frontend (Next.js)
 After=network.target
 
 [Service]
@@ -136,7 +136,7 @@ nginx -t && systemctl reload nginx
 # 9. Setup backup cron job
 echo "Setting up backup cron job..."
 cat > /etc/cron.d/report-backup << EOF
-# Backup RePort database daily at 3am
+# Backup Report database daily at 3am
 0 3 * * * $APP_USER cp $APP_HOME/data/data.db $APP_HOME/backups/data_\$(date +\%Y\%m\%d).db
 # Keep only last 30 backups
 0 4 * * * $APP_USER find $APP_HOME/backups -name "data_*.db" -mtime +30 -delete
