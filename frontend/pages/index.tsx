@@ -86,30 +86,51 @@ const FEATURES = [
   },
 ];
 
-const CHANNELS = [
-  {
-    title: "Рекламные площадки",
-    rows: [
-      { name: "Яндекс Директ", color: "#FC3F1D", status: "доступно", soon: false },
-      { name: "ПромоСтраницы", color: "#f97316", status: "скоро", soon: true },
-      { name: "Google Ads", color: "#4285F4", status: "скоро", soon: true },
-    ],
-  },
-  {
-    title: "Аналитика",
-    rows: [
-      { name: "Яндекс Метрика", color: "#FFBA00", status: "доступно", soon: false },
-      { name: "Ваш вариант?", color: "#7d8aa0", status: "напишите нам", soon: true },
-    ],
-  },
-  {
-    title: "Куда выгружаем",
-    rows: [
-      { name: "Google Sheets", color: "#34A853", status: "доступно", soon: false },
-      { name: "CSV-файл", color: "#7d8aa0", status: "всегда", soon: false },
-    ],
-  },
+/* Карта подключений: координаты узлов в системе viewBox 1080×480,
+   HTML-узлы позиционируются теми же координатами в процентах — пути и узлы не расходятся */
+type VizItem = {
+  name: string;
+  type: string;
+  color: string;
+  live: boolean;
+  x: number;
+  y: number;
+};
+
+const VIZ_SOURCES: VizItem[] = [
+  { name: "Яндекс Директ", type: "реклама", color: "#FC3F1D", live: true, x: 158, y: 52 },
+  { name: "Яндекс Метрика", type: "аналитика", color: "#FFBA00", live: true, x: 108, y: 128 },
+  { name: "ПромоСтраницы", type: "реклама", color: "#f97316", live: false, x: 88, y: 204 },
+  { name: "Google Ads", type: "реклама", color: "#4285F4", live: false, x: 88, y: 280 },
+  { name: "VK Реклама", type: "реклама", color: "#0077FF", live: false, x: 108, y: 356 },
+  { name: "Google Analytics", type: "аналитика", color: "#F9AB00", live: false, x: 158, y: 430 },
 ];
+
+const VIZ_DESTS: VizItem[] = [
+  { name: "Google Sheets", type: "экспорт", color: "#34A853", live: true, x: 935, y: 160 },
+  { name: "CSV-файл", type: "экспорт", color: "#7c8aa5", live: true, x: 935, y: 320 },
+];
+
+// Кривые от узла к ядру (слева) и от ядра к назначениям (справа)
+const srcPath = (x: number, y: number) =>
+  `M ${x} ${y} C ${x + 150} ${y}, 405 ${240 + (y - 240) * 0.3}, 462 ${240 + (y - 240) * 0.2}`;
+const dstPath = (x: number, y: number) =>
+  `M 618 ${240 + (y - 240) * 0.2} C 720 ${y}, 810 ${y}, ${x - 70} ${y}`;
+
+function VizNode({ n }: { n: VizItem }) {
+  return (
+    <div
+      className={`viz-node${n.live ? "" : " plan"}`}
+      style={{ left: `${(n.x / 1080) * 100}%`, top: `${(n.y / 480) * 100}%` }}
+    >
+      <span className="flow-dot" style={{ background: n.color, opacity: n.live ? 1 : 0.55 }} />
+      <span>
+        <b>{n.name}</b>
+        <small>{n.type}</small>
+      </span>
+    </div>
+  );
+}
 
 const STEPS = [
   { num: "01", title: "Проект", text: "Создайте проект под клиента или направление — их может быть сколько угодно." },
@@ -188,7 +209,7 @@ const FAQ = [
   },
   {
     q: "Какие источники появятся дальше?",
-    a: "В плане — Яндекс ПромоСтраницы и Google Ads, дальше — по запросам пользователей. Параллельно готовятся инструменты из раздела «Развитие»: сборка семантического ядра и аналитический блок.",
+    a: "На карте подключений — Яндекс ПромоСтраницы, Google Ads, VK Реклама и Google Analytics; порядок зависит от запросов пользователей. Параллельно готовятся инструменты из раздела «Развитие»: сборка семантического ядра и аналитический блок.",
   },
 ];
 
@@ -355,25 +376,62 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Источники */}
+      {/* Источники: карта подключений */}
       <section className="landing-section landing-channels" id="channels">
         <div className="landing-container">
           <span className="landing-kicker">Каналы</span>
           <h2 className="landing-h2">Доступные источники</h2>
-          <p className="landing-sub">Стартовый набор закрывает базовую отчётность по Яндексу — и понятный план расширения.</p>
-          <div className="landing-cards-grid channels-grid">
-            {CHANNELS.map((c) => (
-              <div key={c.title} className="channel-card">
-                <h3>{c.title}</h3>
-                {c.rows.map((r) => (
-                  <div key={r.name} className={`channel-row${r.soon ? " soon" : ""}`}>
-                    <span className="flow-dot" style={{ background: r.color }} />
-                    <b>{r.name}</b>
-                    <span className="channel-status">{r.status}</span>
-                  </div>
-                ))}
-              </div>
-            ))}
+          <p className="landing-sub">
+            Данные стекаются в ядро Report и уходят в вашу таблицу. Стартуем с Яндекса — карта подключений растёт.
+          </p>
+          <div className="sources-viz">
+            <svg className="viz-svg" viewBox="0 0 1080 480" preserveAspectRatio="none" aria-hidden="true">
+              {VIZ_SOURCES.map((s) => (
+                <path key={s.name} className={`viz-path ${s.live ? "live" : "plan"}`} d={srcPath(s.x, s.y)} />
+              ))}
+              {VIZ_DESTS.map((d) => (
+                <path key={d.name} className="viz-path out" d={dstPath(d.x, d.y)} />
+              ))}
+            </svg>
+
+            <div className="viz-group">
+              <h3>Реклама</h3>
+              {VIZ_SOURCES.filter((s) => s.type === "реклама").map((s) => (
+                <VizNode key={s.name} n={s} />
+              ))}
+            </div>
+            <div className="viz-group">
+              <h3>Аналитика</h3>
+              {VIZ_SOURCES.filter((s) => s.type === "аналитика").map((s) => (
+                <VizNode key={s.name} n={s} />
+              ))}
+            </div>
+
+            <div className="viz-core">
+              <span className="viz-ring" aria-hidden="true" />
+              <img src="/logo-white.png" alt="Report" />
+              <small>
+                объединение источников
+                <br />
+                CPA · ДРР · ROI
+              </small>
+            </div>
+
+            <div className="viz-group">
+              <h3>Куда выгружаем</h3>
+              {VIZ_DESTS.map((d) => (
+                <VizNode key={d.name} n={d} />
+              ))}
+            </div>
+          </div>
+
+          <div className="viz-legend">
+            <span className="viz-legend-item">
+              <span className="legend-dot live" /> уже работает
+            </span>
+            <span className="viz-legend-item">
+              <span className="legend-dot plan" /> в планах
+            </span>
           </div>
           <p className="channels-note">
             Не хватает вашего источника? Напишите нам — очередь интеграций обсуждается с пользователями.
