@@ -1,0 +1,1023 @@
+<title>Report — три варианта лендинга</title>
+<style>
+  /* ============ Оболочка артефакта (theme-aware) ============ */
+  :root {
+    --sh-bg: #f4f6fa;
+    --sh-ink: #17202e;
+    --sh-muted: #5d6b80;
+    --sh-card: #ffffff;
+    --sh-border: #dde3ec;
+    --sh-accent: #2d73ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --sh-bg: #10141c;
+      --sh-ink: #e8edf5;
+      --sh-muted: #93a1b5;
+      --sh-card: #171d28;
+      --sh-border: #2a3342;
+    }
+  }
+  :root[data-theme="dark"] {
+    --sh-bg: #10141c; --sh-ink: #e8edf5; --sh-muted: #93a1b5;
+    --sh-card: #171d28; --sh-border: #2a3342;
+  }
+  :root[data-theme="light"] {
+    --sh-bg: #f4f6fa; --sh-ink: #17202e; --sh-muted: #5d6b80;
+    --sh-card: #ffffff; --sh-border: #dde3ec;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--sh-bg);
+    color: var(--sh-ink);
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+  }
+
+  .shell { max-width: 1160px; margin: 0 auto; padding: 28px 20px 80px; }
+  .shell-head { margin-bottom: 18px; }
+  .shell-head h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.01em; }
+  .shell-head p { color: var(--sh-muted); font-size: 0.95rem; max-width: 70ch; margin-top: 6px; }
+
+  .tabs {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; gap: 8px; flex-wrap: wrap;
+    padding: 10px 0; margin-bottom: 14px;
+    background: var(--sh-bg);
+  }
+  .tab {
+    border: 1px solid var(--sh-border);
+    background: var(--sh-card);
+    color: var(--sh-ink);
+    border-radius: 999px;
+    padding: 9px 18px;
+    font-size: 0.9rem; font-weight: 600;
+    cursor: pointer;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .tab:hover { border-color: var(--sh-accent); }
+  .tab:focus-visible { outline: 2px solid var(--sh-accent); outline-offset: 2px; }
+  .tab[aria-selected="true"] {
+    background: var(--sh-accent); border-color: var(--sh-accent); color: #fff;
+    box-shadow: 0 4px 14px rgba(45, 115, 255, 0.35);
+  }
+  .tab small { font-weight: 400; opacity: 0.75; margin-left: 6px; }
+
+  .variant-note {
+    border: 1px solid var(--sh-border);
+    background: var(--sh-card);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+    font-size: 0.92rem;
+    color: var(--sh-muted);
+  }
+  .variant-note strong { color: var(--sh-ink); }
+
+  .frame {
+    border: 1px solid var(--sh-border);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 18px 50px rgba(10, 20, 40, 0.12);
+  }
+  .variant { display: none; }
+  .variant.active { display: block; }
+
+  .shared {
+    margin-top: 34px;
+    border-top: 1px dashed var(--sh-border);
+    padding-top: 22px;
+  }
+  .shared h2 { font-size: 1.05rem; margin-bottom: 10px; }
+  .shared ul { color: var(--sh-muted); font-size: 0.9rem; padding-left: 20px; display: grid; gap: 4px; }
+
+  /* ============ Общие примитивы мокапов ============ */
+  .mock { font-size: 15px; }
+  .mock .wrap { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+  .mock h1, .mock h2, .mock h3 { line-height: 1.2; letter-spacing: -0.015em; }
+  .mock section { padding: 64px 0; }
+  .mock .kicker {
+    display: inline-block;
+    font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.14em;
+    margin-bottom: 12px;
+  }
+  .mock .sec-title { font-size: 1.7rem; font-weight: 700; margin-bottom: 8px; text-wrap: balance; }
+  .mock .sec-sub { max-width: 62ch; margin-bottom: 34px; }
+
+  /* Логотип: Rep + спиннер-«o» + rt */
+  .logo { display: inline-flex; align-items: center; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+  .logo svg { margin: 0 1px; }
+  @keyframes logo-spin { to { transform: rotate(360deg); } }
+  .logo .spin { animation: logo-spin 9s linear infinite; transform-origin: 12px 12px; }
+  @media (prefers-reduced-motion: reduce) {
+    .logo .spin, .flow-dots line, .mock * { animation: none !important; }
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border-radius: 10px; padding: 12px 22px;
+    font-weight: 600; font-size: 0.95rem;
+    text-decoration: none; cursor: pointer; border: 1px solid transparent;
+  }
+  .grid { display: grid; gap: 18px; }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+
+  .num-badge {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.9rem; flex-shrink: 0;
+  }
+
+  .src-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    border-radius: 999px; padding: 7px 14px;
+    font-size: 0.85rem; font-weight: 600;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  table.cmp { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  table.cmp th, table.cmp td { padding: 13px 16px; text-align: left; vertical-align: top; }
+
+  .faq-item { padding: 15px 0; }
+  .faq-q { font-weight: 600; display: flex; justify-content: space-between; gap: 12px; }
+  .faq-a { margin-top: 7px; font-size: 0.92rem; max-width: 75ch; }
+
+  /* ============================================================
+     ВАРИАНТ A — «Живой пайплайн»: тёмный герой со схемой потока
+     ============================================================ */
+  .va { background: #ffffff; color: #111827; }
+  .va .hero {
+    background:
+      radial-gradient(1000px 420px at 50% -10%, rgba(45, 115, 255, 0.22), transparent 65%),
+      linear-gradient(180deg, #0e1526 0%, #111c33 100%);
+    color: #fff; padding: 0 0 84px;
+  }
+  .va .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 68px; margin-bottom: 58px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  }
+  .va .nav .logo { color: #fff; font-size: 1.35rem; }
+  .va .nav-links { display: flex; gap: 22px; font-size: 0.88rem; }
+  .va .nav-links a { color: #aab8d0; text-decoration: none; }
+  .va .nav-links a:hover { color: #fff; }
+  .va .nav-auth { display: flex; gap: 10px; }
+  .va .btn-ghost { border-color: rgba(255,255,255,0.28); color: #e6ecf7; padding: 9px 16px; font-size: 0.88rem; }
+  .va .btn-solid { background: #2d73ff; color: #fff; padding: 9px 16px; font-size: 0.88rem; }
+  .va .hero h1 {
+    font-size: 3.1rem; font-weight: 800; text-align: center;
+    max-width: 21ch; margin: 0 auto 18px; text-wrap: balance;
+  }
+  .va .hero h1 em { font-style: normal; color: #7aa5ff; }
+  .va .hero .sub {
+    text-align: center; color: #a9b7cf; font-size: 1.13rem;
+    max-width: 58ch; margin: 0 auto 30px;
+  }
+  .va .hero .cta-row { display: flex; gap: 14px; justify-content: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .va .hero .btn-primary { background: #2d73ff; color: #fff; padding: 14px 30px; font-size: 1rem; }
+  .va .hero .btn-primary:hover { background: #205ce0; }
+  .va .hero .btn-outline { border-color: rgba(255,255,255,0.3); color: #fff; padding: 14px 30px; font-size: 1rem; }
+  .va .hero .fineprint { text-align: center; color: #7c8aa5; font-size: 0.84rem; margin-bottom: 52px; }
+
+  /* Схема потока */
+  .va .flow {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
+    max-width: 880px; margin: 0 auto;
+  }
+  .va .flow-col { display: grid; gap: 12px; justify-items: stretch; }
+  .va .flow-node {
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 14px; padding: 13px 16px;
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; font-size: 0.92rem; color: #eef2fa;
+  }
+  .va .flow-node small { display: block; font-weight: 400; color: #93a3bd; font-size: 0.76rem; }
+  .va .flow-core {
+    background: rgba(45, 115, 255, 0.12);
+    border: 1px solid rgba(122, 165, 255, 0.45);
+    border-radius: 18px; padding: 20px 26px; text-align: center;
+    box-shadow: 0 0 44px rgba(45, 115, 255, 0.25);
+  }
+  .va .flow-core .logo { color: #fff; font-size: 1.3rem; margin-bottom: 8px; }
+  .va .flow-core .ops { color: #9fb4d8; font-size: 0.78rem; max-width: 21ch; }
+  .va .flow-link { height: 2px; background: linear-gradient(90deg, rgba(122,165,255,.15), rgba(122,165,255,.7)); position: relative; overflow: visible; }
+  @keyframes dash-run { to { transform: translateX(30px); } }
+  .va .flow-link::after {
+    content: ""; position: absolute; top: -2px; left: 0;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #7aa5ff; box-shadow: 0 0 8px #7aa5ff;
+    animation: dash-run 1.4s linear infinite;
+  }
+
+  .va .kicker { color: #2d73ff; }
+  .va .sec-sub { color: #4b5563; }
+  .va .light-alt { background: #f7f9fc; }
+  .va .card {
+    background: #fff; border: 1px solid #e5e9f1; border-radius: 14px; padding: 26px;
+    transition: box-shadow .15s ease, transform .15s ease;
+  }
+  .va .card:hover { box-shadow: 0 10px 30px rgba(15, 23, 42, 0.09); transform: translateY(-2px); }
+  .va .card h3 { font-size: 1.06rem; margin: 14px 0 8px; }
+  .va .card p { color: #55627a; font-size: 0.92rem; }
+  .va .icon-tile {
+    width: 46px; height: 46px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .va .num-badge { background: #2d73ff; color: #fff; }
+  .va .step h3 { font-size: 1.02rem; margin: 12px 0 6px; }
+  .va .step p { color: #55627a; font-size: 0.9rem; }
+  .va .chan-cat { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6b7890; margin-bottom: 12px; }
+  .va .chan-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .va .src-chip { background: #fff; border: 1px solid #e2e7f0; color: #29344a; }
+  .va .src-chip.soon { border-style: dashed; color: #8a96ad; font-weight: 500; }
+  .va table.cmp { border: 1px solid #e5e9f1; border-radius: 14px; overflow: hidden; }
+  .va table.cmp th { background: #f2f5fa; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: #5b6880; }
+  .va table.cmp td { border-top: 1px solid #edf0f6; color: #3c4a63; }
+  .va table.cmp td.win { color: #111827; font-weight: 500; }
+  .va .sec-dark {
+    background: linear-gradient(180deg, #111c33 0%, #0e1526 100%);
+    color: #fff;
+  }
+  .va .sec-dark .sec-sub { color: #9fb0ca; }
+  .va .sec-dark .card { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); }
+  .va .sec-dark .card h3 { color: #fff; }
+  .va .sec-dark .card p { color: #a5b4cd; }
+  .va .sec-dark .card:hover { box-shadow: none; transform: none; }
+  .va .faq-item { border-bottom: 1px solid #e7ebf2; }
+  .va .faq-a { color: #55627a; }
+  .va .cta-final { background: #0e1526; color: #fff; text-align: center; }
+  .va .cta-final h2 { font-size: 1.9rem; margin-bottom: 10px; }
+  .va .cta-final p { color: #9fb0ca; margin-bottom: 26px; }
+  .va .footer {
+    background: #0b111f; color: #7c8aa5; padding: 26px 0; font-size: 0.85rem;
+  }
+  .va .footer .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .va .footer .logo { color: #d7deeb; font-size: 1.05rem; }
+  .va .footer a { color: #9fb0ca; }
+
+  /* ============================================================
+     ВАРИАНТ B — «Светлый рабочий стол»: продуктовый, со скриншотом
+     ============================================================ */
+  .vb { background: #fbfcfe; color: #17202e; }
+  .vb .topbar {
+    position: relative;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 66px; border-bottom: 1px solid #e7ebf2; background: rgba(255,255,255,0.9);
+  }
+  .vb .topbar .logo { color: #17202e; font-size: 1.3rem; }
+  .vb .nav-links { display: flex; gap: 20px; font-size: 0.88rem; }
+  .vb .nav-links a { color: #5d6b80; text-decoration: none; }
+  .vb .nav-links a:hover { color: #17202e; }
+  .vb .nav-auth { display: flex; gap: 10px; }
+  .vb .btn-ghost { border-color: #d4dae4; color: #3c4a63; padding: 9px 16px; font-size: 0.88rem; }
+  .vb .btn-solid { background: #17202e; color: #fff; padding: 9px 16px; font-size: 0.88rem; }
+  .vb .hero { padding: 74px 0 70px; background:
+    radial-gradient(700px 320px at 85% 0%, rgba(45, 115, 255, 0.09), transparent 60%),
+    linear-gradient(180deg, #ffffff 0%, #f4f7fc 100%);
+  }
+  .vb .hero .wrap { display: grid; grid-template-columns: minmax(300px, 5fr) minmax(320px, 6fr); gap: 48px; align-items: center; }
+  .vb .hero h1 { font-size: 2.7rem; font-weight: 800; margin-bottom: 16px; text-wrap: balance; letter-spacing: -0.025em; }
+  .vb .hero h1 mark { background: linear-gradient(180deg, transparent 62%, rgba(45,115,255,0.25) 62%); color: inherit; }
+  .vb .hero .sub { color: #4c5a71; font-size: 1.08rem; max-width: 48ch; margin-bottom: 26px; }
+  .vb .hero .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .vb .btn-primary { background: #2d73ff; color: #fff; padding: 13px 26px; }
+  .vb .btn-primary:hover { background: #205ce0; }
+  .vb .btn-outline { border-color: #c9d2e0; color: #29344a; padding: 13px 26px; }
+  .vb .fineprint { color: #7d8aa0; font-size: 0.84rem; }
+
+  /* CSS-мокап окна приложения */
+  .vb .app-shot {
+    background: #fff; border: 1px solid #dfe5ee; border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(23, 32, 46, 0.14);
+    overflow: hidden; font-size: 0.8rem;
+  }
+  .vb .app-bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 1px solid #edf0f6; background: #f7f9fc; }
+  .vb .app-bar i { width: 10px; height: 10px; border-radius: 50%; background: #dfe5ee; }
+  .vb .app-bar span { margin-left: 10px; color: #7d8aa0; font-size: 0.75rem; }
+  .vb .app-body { padding: 16px; }
+  .vb .app-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .vb .app-row b { font-size: 0.9rem; }
+  .vb .pill { display: inline-flex; align-items: center; gap: 6px; background: rgba(16,185,129,0.12); color: #0a7d5c; border-radius: 999px; padding: 4px 11px; font-weight: 600; font-size: 0.72rem; }
+  .vb .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .vb .shot-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .vb .shot-table th { text-align: left; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: #7d8aa0; padding: 7px 9px; border-bottom: 1px solid #e7ebf2; background: #fafbfd; }
+  .vb .shot-table td { padding: 7px 9px; border-bottom: 1px solid #f0f3f8; color: #29344a; }
+  .vb .shot-table td:nth-child(n+2) { text-align: right; }
+  .vb .shot-table tr.total td { font-weight: 700; border-top: 2px solid #dfe5ee; }
+  .vb .shot-chips { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .vb .shot-chips .src-chip { font-size: 0.72rem; padding: 5px 11px; border: 1px solid #e2e7f0; background: #fff; }
+
+  .vb .kicker { color: #2d73ff; }
+  .vb .sec-sub { color: #4c5a71; }
+  .vb section.alt { background: #f4f7fc; }
+  .vb .card { background: #fff; border: 1px solid #e4e9f1; border-radius: 14px; padding: 26px; box-shadow: 0 2px 10px rgba(23,32,46,0.04); }
+  .vb .card h3 { font-size: 1.05rem; margin: 13px 0 8px; }
+  .vb .card p { color: #55627a; font-size: 0.92rem; }
+  .vb .icon-tile { width: 46px; height: 46px; border-radius: 11px; display: flex; align-items: center; justify-content: center; }
+  .vb .num-badge { background: #17202e; color: #fff; }
+  .vb .step h3 { font-size: 1.02rem; margin: 12px 0 6px; }
+  .vb .step p { color: #55627a; font-size: 0.9rem; }
+  .vb .chan-card { background: #fff; border: 1px solid #e4e9f1; border-radius: 14px; padding: 22px; }
+  .vb .chan-card h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: #7d8aa0; margin-bottom: 14px; }
+  .vb .chan-line { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #f0f3f8; font-weight: 600; font-size: 0.92rem; }
+  .vb .chan-line small { font-weight: 400; color: #8b97ab; margin-left: auto; font-size: 0.76rem; }
+  .vb table.cmp { border: 1px solid #e4e9f1; border-radius: 14px; overflow: hidden; background: #fff; }
+  .vb table.cmp th { background: #f2f5fa; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: #5b6880; }
+  .vb table.cmp td { border-top: 1px solid #edf0f6; color: #3c4a63; }
+  .vb table.cmp td.win { color: #17202e; font-weight: 500; }
+  .vb .safe-card { background: #fff; border: 1px solid #e4e9f1; border-left: 3px solid #2d73ff; border-radius: 12px; padding: 20px 22px; }
+  .vb .safe-card h3 { font-size: 0.98rem; margin-bottom: 6px; }
+  .vb .safe-card p { color: #55627a; font-size: 0.88rem; }
+  .vb .faq-item { border-bottom: 1px solid #e7ebf2; }
+  .vb .faq-a { color: #55627a; }
+  .vb .cta-final { background: #17202e; color: #fff; text-align: center; border-radius: 22px; padding: 56px 32px !important; }
+  .vb .cta-final h2 { font-size: 1.8rem; margin-bottom: 10px; }
+  .vb .cta-final p { color: #9fb0ca; margin-bottom: 24px; }
+  .vb .cta-wrap { padding: 0 32px 64px; max-width: 1080px; margin: 0 auto; }
+  .vb .footer { border-top: 1px solid #e7ebf2; padding: 24px 0; font-size: 0.85rem; color: #7d8aa0; background: #fff; }
+  .vb .footer .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .vb .footer .logo { font-size: 1rem; color: #3c4a63; }
+  .vb .footer a { color: #5d6b80; }
+
+  /* ============================================================
+     ВАРИАНТ C — «Студия данных»: полностью тёмный, bento-сетка
+     ============================================================ */
+  .vc { background: #0b0e15; color: #e9edf5; }
+  .vc .mono { font-family: "Cascadia Code", Consolas, ui-monospace, monospace; }
+  .vc .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 66px; border-bottom: 1px solid #1c2331;
+  }
+  .vc .nav .logo { color: #fff; font-size: 1.3rem; }
+  .vc .nav-links { display: flex; gap: 20px; font-size: 0.88rem; }
+  .vc .nav-links a { color: #8b97ad; text-decoration: none; }
+  .vc .nav-links a:hover { color: #fff; }
+  .vc .nav-auth { display: flex; gap: 10px; }
+  .vc .btn-ghost { border-color: #2b3446; color: #cdd6e4; padding: 9px 16px; font-size: 0.88rem; }
+  .vc .btn-solid { background: #2d73ff; color: #fff; padding: 9px 16px; font-size: 0.88rem; }
+  .vc .hero { padding: 78px 0 30px; text-align: center; }
+  .vc .hero .route {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 0.8rem; color: #8b97ad;
+    border: 1px solid #232c3d; border-radius: 999px; padding: 7px 16px; margin-bottom: 26px;
+  }
+  .vc .hero .route b { color: #ffba00; font-weight: 600; }
+  .vc .hero .route b.dir { color: #ff6a4d; }
+  .vc .hero .route b.gs { color: #4fc482; }
+  .vc .hero h1 { font-size: 3rem; font-weight: 800; max-width: 22ch; margin: 0 auto 16px; text-wrap: balance; }
+  .vc .hero h1 .grad {
+    background: linear-gradient(90deg, #7aa5ff, #b58cff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+  }
+  .vc .hero .sub { color: #97a3b8; font-size: 1.1rem; max-width: 56ch; margin: 0 auto 28px; }
+  .vc .hero .cta-row { display: flex; gap: 13px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .vc .btn-primary { background: #2d73ff; color: #fff; padding: 13px 28px; }
+  .vc .btn-primary:hover { background: #205ce0; }
+  .vc .btn-outline { border-color: #2b3446; color: #e9edf5; padding: 13px 28px; }
+  .vc .fineprint { color: #6b7890; font-size: 0.84rem; }
+
+  /* Bento */
+  .vc .bento {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(6, 1fr);
+    margin-top: 52px;
+  }
+  .vc .cell {
+    background: linear-gradient(180deg, #12161f 0%, #0e121b 100%);
+    border: 1px solid #1e2735; border-radius: 16px; padding: 22px;
+    text-align: left;
+  }
+  .vc .cell h3 { font-size: 1rem; margin-bottom: 6px; color: #fff; }
+  .vc .cell p { color: #8b97ad; font-size: 0.86rem; }
+  .vc .cell-flow { grid-column: span 4; }
+  .vc .cell-metrics { grid-column: span 2; }
+  .vc .cell-3 { grid-column: span 2; }
+  .vc .mini-flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .vc .mini-node { border: 1px solid #26324a; background: #131a28; border-radius: 10px; padding: 8px 13px; font-size: 0.8rem; font-weight: 600; }
+  .vc .mini-node.dir { color: #ff8266; border-color: rgba(255, 106, 77, 0.4); }
+  .vc .mini-node.met { color: #ffca42; border-color: rgba(255, 186, 0, 0.4); }
+  .vc .mini-node.rep { color: #7aa5ff; border-color: rgba(122, 165, 255, 0.5); box-shadow: 0 0 18px rgba(45,115,255,0.2); }
+  .vc .mini-node.gs { color: #4fc482; border-color: rgba(79, 196, 130, 0.4); }
+  .vc .mini-arrow { color: #3d4a61; }
+  .vc .m-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px dashed #202a3c; font-size: 0.85rem; }
+  .vc .m-row:last-child { border-bottom: none; }
+  .vc .m-row .f { color: #6b7890; font-size: 0.72rem; }
+  .vc .m-row b { color: #7aa5ff; }
+
+  .vc .kicker { color: #7aa5ff; }
+  .vc .sec-sub { color: #97a3b8; }
+  .vc .card { background: #10141d; border: 1px solid #1e2735; border-radius: 14px; padding: 24px; }
+  .vc .card h3 { font-size: 1.02rem; margin: 12px 0 8px; color: #fff; }
+  .vc .card p { color: #8b97ad; font-size: 0.9rem; }
+  .vc .icon-tile { width: 44px; height: 44px; border-radius: 11px; display: flex; align-items: center; justify-content: center; }
+  .vc .num-badge { background: #1a2233; color: #7aa5ff; border: 1px solid #26324a; }
+  .vc .step h3 { color: #fff; font-size: 1rem; margin: 12px 0 6px; }
+  .vc .step p { color: #8b97ad; font-size: 0.88rem; }
+  .vc .chan-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .vc .src-chip { background: #10141d; border: 1px solid #232c3d; color: #cdd6e4; }
+  .vc .src-chip.soon { border-style: dashed; color: #6b7890; font-weight: 500; }
+  .vc .chan-cat { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #5f6c82; margin-bottom: 12px; }
+  .vc table.cmp { border: 1px solid #1e2735; border-radius: 14px; overflow: hidden; }
+  .vc table.cmp th { background: #131a26; color: #8b97ad; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; }
+  .vc table.cmp td { border-top: 1px solid #1a2230; color: #97a3b8; }
+  .vc table.cmp td.win { color: #e9edf5; font-weight: 500; }
+  .vc .safe-strip { border: 1px solid #1e2735; border-radius: 14px; background: #10141d; padding: 20px 22px; display: flex; gap: 14px; align-items: flex-start; }
+  .vc .safe-strip h3 { font-size: 0.95rem; color: #fff; margin-bottom: 5px; }
+  .vc .safe-strip p { color: #8b97ad; font-size: 0.86rem; }
+  .vc .safe-ic { width: 36px; height: 36px; border-radius: 10px; background: rgba(45,115,255,0.12); border: 1px solid rgba(122,165,255,0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .vc .faq-item { border-bottom: 1px solid #1c2331; }
+  .vc .faq-a { color: #8b97ad; }
+  .vc .cta-final { text-align: center; background:
+    radial-gradient(600px 260px at 50% 110%, rgba(45,115,255,0.25), transparent 70%);
+  }
+  .vc .cta-final h2 { font-size: 1.9rem; margin-bottom: 10px; }
+  .vc .cta-final p { color: #97a3b8; margin-bottom: 26px; }
+  .vc .footer { border-top: 1px solid #1c2331; padding: 24px 0; color: #6b7890; font-size: 0.85rem; }
+  .vc .footer .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .vc .footer .logo { color: #cdd6e4; font-size: 1rem; }
+  .vc .footer a { color: #8b97ad; }
+
+  @media (max-width: 860px) {
+    .mock section { padding: 46px 0; }
+    .va .hero h1, .vc .hero h1 { font-size: 2.2rem; }
+    .vb .hero .wrap { grid-template-columns: 1fr; }
+    .vb .hero h1 { font-size: 2.1rem; }
+    .va .flow { grid-template-columns: 1fr; }
+    .va .flow-link { display: none; }
+    .vc .bento { grid-template-columns: 1fr; }
+    .vc .cell-flow, .vc .cell-metrics, .vc .cell-3 { grid-column: span 1; }
+    .va .nav-links, .vb .nav-links, .vc .nav-links { display: none; }
+  }
+</style>
+
+<div class="shell">
+  <div class="shell-head">
+    <h1>Report — три варианта нового лендинга</h1>
+    <p>Контентный скелет один (преимущества → каналы → как работает → интеграции → безопасность → «вручную vs Report» → FAQ), различается визуальный язык. Мокапы кликабельны только как страницы — это иллюстрации стиля, не финальная вёрстка.</p>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-v="a">Вариант А<small>Живой пайплайн</small></button>
+    <button class="tab" role="tab" aria-selected="false" data-v="b">Вариант Б<small>Светлый рабочий стол</small></button>
+    <button class="tab" role="tab" aria-selected="false" data-v="c">Вариант В<small>Студия данных</small></button>
+  </div>
+
+  <div class="variant-note" id="note-a">
+    <strong>А. «Живой пайплайн».</strong> Эволюция текущего дизайна: тёмный герой остаётся, но вместо гигантского логотипа — анимированная схема потока данных (Директ + Метрика → Report → Sheets). Секции светлые, карточная система сохранена. Минимальный риск, средний объём работ.
+  </div>
+  <div class="variant-note" id="note-b" hidden>
+    <strong>Б. «Светлый рабочий стол».</strong> Полностью светлый, продуктовый: герой в две колонки — слева оффер, справа CSS-мокап интерфейса с готовым отчётом (социальное доказательство «вот результат»). Самый «взрослый» SaaS-вид, ближе к Supermetrics/Windsor.
+  </div>
+  <div class="variant-note" id="note-c" hidden>
+    <strong>В. «Студия данных».</strong> Смелый вариант: полностью тёмная тема, bento-сетка возможностей, моноширинные акценты с формулами метрик, маршрут «Директ + Метрика → таблица» прямо в бейдже героя. Инженерный вайб для аудитории, которая живёт в данных.
+  </div>
+
+  <!-- ================= ВАРИАНТ A ================= -->
+  <div class="variant active frame" id="v-a">
+  <div class="mock va">
+    <div class="hero">
+      <div class="wrap">
+        <div class="nav">
+          <span class="logo">Rep<svg class="spin" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="22" cy="12" r="2.6"/><circle cx="19.1" cy="19.1" r="2.35"/><circle cx="12" cy="22" r="2.1"/><circle cx="4.9" cy="19.1" r="1.85"/><circle cx="2" cy="12" r="1.6"/><circle cx="4.9" cy="4.9" r="1.35"/><circle cx="12" cy="2" r="1.1"/><circle cx="19.1" cy="4.9" r="0.9"/></g></svg>rt</span>
+          <nav class="nav-links">
+            <a href="#">Возможности</a><a href="#">Каналы</a><a href="#">Как это работает</a><a href="#">Безопасность</a><a href="#">FAQ</a>
+          </nav>
+          <div class="nav-auth">
+            <a class="btn btn-ghost" href="#">Войти</a>
+            <a class="btn btn-solid" href="#">Зарегистрироваться</a>
+          </div>
+        </div>
+        <h1>Статистика рекламы — <em>сама</em> в вашей Google-таблице</h1>
+        <p class="sub">Report подключается к Яндекс Директу и Метрике по OAuth, объединяет и пересчитывает данные и выгружает готовый отчёт в Google Sheets. Все проекты и клиенты — в одном аккаунте.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#">Создать аккаунт</a>
+          <a class="btn btn-outline" href="#">Войти</a>
+        </div>
+        <p class="fineprint">Бесплатно — это некоммерческий проект. Без тарифов и привязки карты.</p>
+
+        <div class="flow">
+          <div class="flow-col">
+            <div class="flow-node"><span class="dot" style="background:#FC3F1D"></span><span>Яндекс Директ<small>кампании · клики · расход</small></span></div>
+            <div class="flow-node"><span class="dot" style="background:#FFBA00"></span><span>Яндекс Метрика<small>визиты · цели · конверсии</small></span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:36px auto 36px;align-items:center;gap:0">
+            <div class="flow-link"></div>
+            <div class="flow-core">
+              <span class="logo">Rep<svg class="spin" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="22" cy="12" r="2.6"/><circle cx="19.1" cy="19.1" r="2.35"/><circle cx="12" cy="22" r="2.1"/><circle cx="4.9" cy="19.1" r="1.85"/><circle cx="2" cy="12" r="1.6"/><circle cx="4.9" cy="4.9" r="1.35"/><circle cx="12" cy="2" r="1.1"/><circle cx="19.1" cy="4.9" r="0.9"/></g></svg>rt</span>
+              <div class="ops">фильтры · группировки · объединение · UTM · CPA / ДРР / ROI</div>
+            </div>
+            <div class="flow-link"></div>
+          </div>
+          <div class="flow-col">
+            <div class="flow-node"><span class="dot" style="background:#34A853"></span><span>Google Sheets<small>живой отчёт для команды</small></span></div>
+            <div class="flow-node"><span class="dot" style="background:#7c8aa5"></span><span>CSV<small>выгрузка в один клик</small></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Возможности</span>
+        <h2 class="sec-title">Один инструмент вместо ручной сборки отчётов</h2>
+        <p class="sec-sub">Каждый блок ниже закрывает конкретный шаг, который вы сейчас делаете руками.</p>
+        <div class="grid g3">
+          <div class="card">
+            <div class="icon-tile" style="background:rgba(45,115,255,0.1)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2d73ff" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
+            <h3>Все проекты в одном окне</h3>
+            <p>Отдельный проект на каждого клиента или направление: свои подключения, свои отчёты, ничего не перемешивается.</p>
+          </div>
+          <div class="card">
+            <div class="icon-tile" style="background:rgba(99,102,241,0.1)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M4 6h16M7 12h13M10 18h10"/></svg></div>
+            <h3>Конструктор без кода и формул</h3>
+            <p>Шаги-трансформации вместо VLOOKUP: фильтр, группировка, объединение источников, переименование, сортировка.</p>
+          </div>
+          <div class="card">
+            <div class="icon-tile" style="background:rgba(252,63,29,0.08)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FC3F1D" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></div>
+            <h3>Сквозные метрики</h3>
+            <p>Расход из Директа + цели из Метрики = CPA, ДРР и ROI по кампаниям и UTM-меткам. Такого отчёта нет ни в одном кабинете по отдельности.</p>
+          </div>
+          <div class="card">
+            <div class="icon-tile" style="background:rgba(16,185,129,0.1)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg></div>
+            <h3>Превью на каждом шаге</h3>
+            <p>Видно, как меняются данные после каждой трансформации — ошибка ловится до выгрузки, а не после.</p>
+          </div>
+          <div class="card">
+            <div class="icon-tile" style="background:rgba(52,168,83,0.1)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#34A853" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
+            <h3>Экспорт туда, где работаете</h3>
+            <p>Новая Google-таблица при каждом запуске или ваш лист в существующей — формулы и дашборды остаются на месте. Нужен файл — скачайте CSV.</p>
+          </div>
+          <div class="card">
+            <div class="icon-tile" style="background:rgba(245,158,11,0.1)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+            <h3>История запусков</h3>
+            <p>Каждый прогон отчёта фиксируется: когда, с каким статусом, со ссылкой на результат. Понятно, что и куда уехало.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="light-alt">
+      <div class="wrap">
+        <span class="kicker">Каналы</span>
+        <h2 class="sec-title">Источники и назначения</h2>
+        <p class="sec-sub">Мало, зато честно: эти подключения закрывают базовую отчётность по Яндексу. Список расширяется.</p>
+        <div class="grid g3">
+          <div>
+            <div class="chan-cat">Рекламные площадки</div>
+            <div class="chan-row">
+              <span class="src-chip"><span class="dot" style="background:#FC3F1D"></span>Яндекс Директ</span>
+              <span class="src-chip soon">ПромоСтраницы — скоро</span>
+              <span class="src-chip soon">Google Ads — скоро</span>
+            </div>
+          </div>
+          <div>
+            <div class="chan-cat">Аналитика</div>
+            <div class="chan-row">
+              <span class="src-chip"><span class="dot" style="background:#FFBA00"></span>Яндекс Метрика</span>
+            </div>
+          </div>
+          <div>
+            <div class="chan-cat">Куда выгружаем</div>
+            <div class="chan-row">
+              <span class="src-chip"><span class="dot" style="background:#34A853"></span>Google Sheets</span>
+              <span class="src-chip"><span class="dot" style="background:#7c8aa5"></span>CSV</span>
+            </div>
+          </div>
+        </div>
+        <p style="margin-top:26px;color:#6b7890;font-size:0.9rem">Не хватает вашего источника? <a href="#" style="color:#2d73ff">Напишите нам</a> — очередь интеграций обсуждается с пользователями.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Как это работает</span>
+        <h2 class="sec-title">От регистрации до готового отчёта — четыре шага</h2>
+        <div class="grid g3" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+          <div class="step"><span class="num-badge">1</span><h3>Создайте проект</h3><p>Под клиента или направление. Проектов может быть сколько угодно.</p></div>
+          <div class="step"><span class="num-badge">2</span><h3>Подключите кабинеты</h3><p>OAuth-окно Яндекса и Google: два клика, без токенов и паролей.</p></div>
+          <div class="step"><span class="num-badge">3</span><h3>Соберите отчёт</h3><p>Период, источники, шаги трансформаций — и превью результата на каждом этапе.</p></div>
+          <div class="step"><span class="num-badge">4</span><h3>Выгрузите</h3><p>В новую или свою Google-таблицу — или скачайте CSV. Повторный запуск — одна кнопка.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec-dark">
+      <div class="wrap">
+        <span class="kicker" style="color:#7aa5ff">Безопасность данных</span>
+        <h2 class="sec-title" style="color:#fff">Доступ — по правилам площадок, данные — только ваши</h2>
+        <p class="sec-sub">Без сертификатов и громких слов: вот как устроен доступ на самом деле.</p>
+        <div class="grid g2">
+          <div class="card"><h3>Пароли не проходят через нас</h3><p>Авторизация — в официальном окне Яндекса и Google (OAuth 2.0). Report получает только токен доступа и никогда не видит ваш пароль.</p></div>
+          <div class="card"><h3>Только чтение статистики</h3><p>Сервис запрашивает отчётные данные по официальным API и не управляет кампаниями — ничего не включает, не выключает и не меняет ставки.</p></div>
+          <div class="card"><h3>Данные не монетизируются</h3><p>Report — некоммерческий проект: без рекламы, без продажи данных, без «аналитики по рынку» на ваших цифрах. Отчёт уходит в вашу таблицу — и всё.</p></div>
+          <div class="card"><h3>Доступ отзывается в один клик</h3><p>Отключите интеграцию в настройках проекта — или отзовите доступ в Яндекс ID и аккаунте Google. Токен мгновенно перестаёт действовать.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Сравнение</span>
+        <h2 class="sec-title">Понедельник без Report — и с ним</h2>
+        <table class="cmp">
+          <thead><tr><th style="width:50%">Вручную</th><th>С Report</th></tr></thead>
+          <tbody>
+            <tr><td>Выгрузить CSV из Директа, отчёт из Метрики</td><td class="win">Данные приходят по API за нужный период</td></tr>
+            <tr><td>Склеить VLOOKUP и сводными таблицами</td><td class="win">Объединение источников настраивается один раз</td></tr>
+            <tr><td>Пересчитать CPA и ДРР руками</td><td class="win">Вычисляемые метрики считаются сами</td></tr>
+            <tr><td>Повторить всё в следующий понедельник</td><td class="win">Открыть отчёт → «Запустить» → готово</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="light-alt">
+      <div class="wrap">
+        <span class="kicker">FAQ</span>
+        <h2 class="sec-title">Частые вопросы</h2>
+        <div>
+          <div class="faq-item"><div class="faq-q">Что сервис видит в моих аккаунтах? <span>−</span></div><div class="faq-a">Статистику кампаний Директа и отчёты Метрики — ровно то, что нужно для построения ваших отчётов. Управление кампаниями не используется.</div></div>
+          <div class="faq-item"><div class="faq-q">Почему бесплатно? <span>+</span></div></div>
+          <div class="faq-item"><div class="faq-q">Как отозвать доступ? <span>+</span></div></div>
+          <div class="faq-item"><div class="faq-q">Сколько проектов и отчётов можно создать? <span>+</span></div></div>
+          <div class="faq-item"><div class="faq-q">Появятся ли другие источники данных? <span>+</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-final">
+      <div class="wrap">
+        <h2>Соберите первый отчёт за 10 минут</h2>
+        <p>Регистрация бесплатна — Report существует, чтобы им пользовались.</p>
+        <a class="btn btn-primary" href="#" style="background:#2d73ff;color:#fff;padding:14px 30px">Создать аккаунт</a>
+      </div>
+    </section>
+
+    <div class="footer">
+      <div class="wrap">
+        <span class="logo">Rep<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="22" cy="12" r="2.6"/><circle cx="19.1" cy="19.1" r="2.35"/><circle cx="12" cy="22" r="2.1"/><circle cx="4.9" cy="19.1" r="1.85"/><circle cx="2" cy="12" r="1.6"/><circle cx="4.9" cy="4.9" r="1.35"/><circle cx="12" cy="2" r="1.1"/><circle cx="19.1" cy="4.9" r="0.9"/></g></svg>rt</span>
+        <span>© 2026 Report — некоммерческий ETL-сервис для маркетинга</span>
+        <a href="#">Политика конфиденциальности</a>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- ================= ВАРИАНТ B ================= -->
+  <div class="variant frame" id="v-b" hidden>
+  <div class="mock vb">
+    <div class="topbar">
+      <div class="wrap" style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <span class="logo">Rep<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="22" cy="12" r="2.6"/><circle cx="19.1" cy="19.1" r="2.35"/><circle cx="12" cy="22" r="2.1"/><circle cx="4.9" cy="19.1" r="1.85"/><circle cx="2" cy="12" r="1.6"/><circle cx="4.9" cy="4.9" r="1.35"/><circle cx="12" cy="2" r="1.1"/><circle cx="19.1" cy="4.9" r="0.9"/></g></svg>rt</span>
+        <nav class="nav-links"><a href="#">Возможности</a><a href="#">Каналы</a><a href="#">Как это работает</a><a href="#">Безопасность</a><a href="#">FAQ</a></nav>
+        <div class="nav-auth"><a class="btn btn-ghost" href="#">Войти</a><a class="btn btn-solid" href="#">Зарегистрироваться</a></div>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div class="wrap">
+        <div>
+          <h1>Отчёт по рекламе собирается <mark>сам</mark>. Вы просто открываете таблицу</h1>
+          <p class="sub">Директ и Метрика подключаются по OAuth за пару кликов. Report объединяет статистику, считает CPA и ДРР и выгружает результат в Google Sheets.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#">Создать аккаунт</a>
+            <a class="btn btn-outline" href="#">Посмотреть, как это работает</a>
+          </div>
+          <p class="fineprint">Некоммерческий проект: бесплатно, без тарифов и карты.</p>
+        </div>
+        <div class="app-shot" aria-hidden="true">
+          <div class="app-bar"><i></i><i></i><i></i><span>report-analytics.ru — Отчёт «Перфоманс · октябрь»</span></div>
+          <div class="app-body">
+            <div class="app-row"><b>Кампании × цели Метрики</b><span class="pill">Выгружено в Google Sheets</span></div>
+            <table class="shot-table">
+              <thead><tr><th>Кампания</th><th>Клики</th><th>Расход, ₽</th><th>Лиды</th><th>CPA, ₽</th></tr></thead>
+              <tbody>
+                <tr><td>Поиск · Бренд</td><td>4 812</td><td>96 340</td><td>212</td><td>454</td></tr>
+                <tr><td>Поиск · Категории</td><td>9 508</td><td>241 115</td><td>318</td><td>758</td></tr>
+                <tr><td>РСЯ · Ретаргетинг</td><td>12 344</td><td>118 902</td><td>174</td><td>683</td></tr>
+                <tr><td>РСЯ · Look-alike</td><td>7 061</td><td>84 500</td><td>96</td><td>880</td></tr>
+                <tr class="total"><td>Итого</td><td>33 725</td><td>540 857</td><td>800</td><td>676</td></tr>
+              </tbody>
+            </table>
+            <div class="shot-chips">
+              <span class="src-chip"><span class="dot" style="background:#FC3F1D"></span>Директ подключён</span>
+              <span class="src-chip"><span class="dot" style="background:#FFBA00"></span>Метрика подключена</span>
+              <span class="src-chip"><span class="dot" style="background:#34A853"></span>Лист «Октябрь» обновлён</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Возможности</span>
+        <h2 class="sec-title">Что умеет Report</h2>
+        <p class="sec-sub">Шесть вещей, которые обычно делаются руками в Excel — здесь они происходят сами.</p>
+        <div class="grid g3">
+          <div class="card"><div class="icon-tile" style="background:rgba(45,115,255,0.09)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2d73ff" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div><h3>Проекты для каждого клиента</h3><p>Свои интеграции и отчёты в каждом проекте — агентский режим по умолчанию.</p></div>
+          <div class="card"><div class="icon-tile" style="background:rgba(99,102,241,0.09)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M4 6h16M7 12h13M10 18h10"/></svg></div><h3>Трансформации без формул</h3><p>Фильтры, группировки, объединение источников и вычисляемые поля — по шагам, как конструктор.</p></div>
+          <div class="card"><div class="icon-tile" style="background:rgba(252,63,29,0.07)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FC3F1D" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></div><h3>CPA, ДРР и ROI из двух источников</h3><p>Расход Директа соединяется с целями Метрики — получаются метрики, которых нет в кабинетах.</p></div>
+          <div class="card"><div class="icon-tile" style="background:rgba(16,185,129,0.09)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg></div><h3>Превью до выгрузки</h3><p>Результат каждого шага виден сразу — не придётся удалять испорченную таблицу.</p></div>
+          <div class="card"><div class="icon-tile" style="background:rgba(52,168,83,0.09)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#34A853" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div><h3>Sheets или CSV</h3><p>Новая таблица при каждом запуске или ваш лист в существующей — на выбор.</p></div>
+          <div class="card"><div class="icon-tile" style="background:rgba(245,158,11,0.09)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div><h3>История запусков</h3><p>Статусы, ошибки и ссылки на выгруженные таблицы — в карточке отчёта.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="alt">
+      <div class="wrap">
+        <span class="kicker">Каналы</span>
+        <h2 class="sec-title">Подключения</h2>
+        <p class="sec-sub">Стартовый набор для отчётности по Яндексу — и понятный план расширения.</p>
+        <div class="grid g3">
+          <div class="chan-card">
+            <h3>Рекламные площадки</h3>
+            <div class="chan-line"><span class="dot" style="background:#FC3F1D"></span>Яндекс Директ<small>подключено</small></div>
+            <div class="chan-line" style="opacity:.55"><span class="dot" style="background:#f97316"></span>ПромоСтраницы<small>скоро</small></div>
+            <div class="chan-line" style="opacity:.55"><span class="dot" style="background:#4285F4"></span>Google Ads<small>скоро</small></div>
+          </div>
+          <div class="chan-card">
+            <h3>Аналитика</h3>
+            <div class="chan-line"><span class="dot" style="background:#FFBA00"></span>Яндекс Метрика<small>подключено</small></div>
+            <div class="chan-line" style="opacity:.55"><span class="dot" style="background:#7d8aa0"></span>Ваш вариант?<small>напишите нам</small></div>
+          </div>
+          <div class="chan-card">
+            <h3>Куда выгружаем</h3>
+            <div class="chan-line"><span class="dot" style="background:#34A853"></span>Google Sheets<small>подключено</small></div>
+            <div class="chan-line"><span class="dot" style="background:#7d8aa0"></span>CSV-файл<small>всегда</small></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Как это работает</span>
+        <h2 class="sec-title">Четыре шага до готового отчёта</h2>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+          <div class="step"><span class="num-badge">1</span><h3>Проект</h3><p>Создайте проект под клиента или направление.</p></div>
+          <div class="step"><span class="num-badge">2</span><h3>Кабинеты</h3><p>Подключите Директ, Метрику и Google по OAuth — пароли вводятся только на их стороне.</p></div>
+          <div class="step"><span class="num-badge">3</span><h3>Конструктор</h3><p>Выберите период и данные, настройте шаги трансформаций, проверьте превью.</p></div>
+          <div class="step"><span class="num-badge">4</span><h3>Таблица</h3><p>Выгрузите в Google Sheets или CSV. Повторный запуск — одна кнопка.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="alt">
+      <div class="wrap">
+        <span class="kicker">Безопасность данных</span>
+        <h2 class="sec-title">Честно о доступе к вашим данным</h2>
+        <p class="sec-sub">Report — некоммерческий проект, поэтому и гарантии здесь архитектурные, а не маркетинговые.</p>
+        <div class="grid g2">
+          <div class="safe-card"><h3>OAuth 2.0 вместо паролей</h3><p>Вы авторизуетесь в официальном окне Яндекса или Google. Сервис получает токен доступа — пароль он не видит никогда.</p></div>
+          <div class="safe-card"><h3>Только чтение статистики</h3><p>Report запрашивает отчётные данные и не управляет кампаниями: не меняет ставки, не останавливает объявления.</p></div>
+          <div class="safe-card"><h3>Ваши данные — только ваши</h3><p>Никакой рекламы, перепродажи и «обезличенной аналитики». Статистика используется для одного: построить ваш отчёт и выгрузить его в вашу таблицу.</p></div>
+          <div class="safe-card"><h3>Отзыв доступа в один клик</h3><p>Отключите интеграцию в проекте или отзовите доступ в Яндекс ID / аккаунте Google — токен сразу перестаёт работать.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Сравнение</span>
+        <h2 class="sec-title">Сколько шагов исчезает</h2>
+        <table class="cmp">
+          <thead><tr><th style="width:50%">Вручную</th><th>С Report</th></tr></thead>
+          <tbody>
+            <tr><td>CSV из Директа + отчёт из Метрики</td><td class="win">Данные приходят по API</td></tr>
+            <tr><td>VLOOKUP, сводные, «почему не сходится»</td><td class="win">Объединение настроено один раз</td></tr>
+            <tr><td>CPA и ДРР — руками на калькуляторе</td><td class="win">Вычисляемые метрики в конструкторе</td></tr>
+            <tr><td>Каждую неделю заново</td><td class="win">Кнопка «Запустить» в готовом отчёте</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="alt">
+      <div class="wrap">
+        <span class="kicker">FAQ</span>
+        <h2 class="sec-title">Частые вопросы</h2>
+        <div>
+          <div class="faq-item"><div class="faq-q">Почему сервис бесплатный? <span>−</span></div><div class="faq-a">Report — некоммерческий проект. Здесь нет тарифов, рекламы и монетизации данных; сервис развивается как инструмент для сообщества маркетологов.</div></div>
+          <div class="faq-item"><div class="faq-q">Что сервис видит в моих аккаунтах? <span>+</span></div></div>
+          <div class="faq-item"><div class="faq-q">Храните ли вы мою статистику? <span>+</span></div></div>
+          <div class="faq-item"><div class="faq-q">Как отозвать доступ? <span>+</span></div></div>
+          <div class="faq-item"><div class="faq-q">Какие источники появятся дальше? <span>+</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="cta-wrap">
+      <section class="cta-final">
+        <h2>Первый отчёт — уже сегодня</h2>
+        <p>Создайте аккаунт, подключите Директ и Метрику и соберите отчёт за 10 минут.</p>
+        <a class="btn btn-primary" href="#">Создать аккаунт</a>
+      </section>
+    </div>
+
+    <div class="footer">
+      <div class="wrap">
+        <span class="logo">Rep<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="22" cy="12" r="2.6"/><circle cx="19.1" cy="19.1" r="2.35"/><circle cx="12" cy="22" r="2.1"/><circle cx="4.9" cy="19.1" r="1.85"/><circle cx="2" cy="12" r="1.6"/><circle cx="4.9" cy="4.9" r="1.35"/><circle cx="12" cy="2" r="1.1"/><circle cx="19.1" cy="4.9" r="0.9"/></g></svg>rt</span>
+        <span>© 2026 Report — некоммерческий проект</span>
+        <a href="#">Политика конфиденциальности</a>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- ================= ВАРИАНТ C ================= -->
+  <div class="variant frame" id="v-c" hidden>
+  <div class="mock vc">
+    <div class="wrap">
+      <div class="nav">
+        <span class="logo">Rep<svg class="spin" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="22" cy="12" r="2.6"/><circle cx="19.1" cy="19.1" r="2.35"/><circle cx="12" cy="22" r="2.1"/><circle cx="4.9" cy="19.1" r="1.85"/><circle cx="2" cy="12" r="1.6"/><circle cx="4.9" cy="4.9" r="1.35"/><circle cx="12" cy="2" r="1.1"/><circle cx="19.1" cy="4.9" r="0.9"/></g></svg>rt</span>
+        <nav class="nav-links"><a href="#">Возможности</a><a href="#">Каналы</a><a href="#">Безопасность</a><a href="#">FAQ</a></nav>
+        <div class="nav-auth"><a class="btn btn-ghost" href="#">Войти</a><a class="btn btn-solid" href="#">Зарегистрироваться</a></div>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div class="wrap">
+        <span class="route mono"><b class="dir">Директ</b> + <b>Метрика</b> → трансформации → <b class="gs">Google Sheets</b></span>
+        <h1>Рекламные данные, <span class="grad">собранные в отчёт</span> без ручной работы</h1>
+        <p class="sub">Подключите кабинеты по OAuth, опишите отчёт шагами конструктора — Report сведёт источники, посчитает метрики и выгрузит результат в таблицу.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#">Создать аккаунт</a>
+          <a class="btn btn-outline" href="#">Войти</a>
+        </div>
+        <p class="fineprint">Некоммерческий проект · бесплатно · без карты</p>
+
+        <div class="bento">
+          <div class="cell cell-flow">
+            <h3>Пайплайн вместо копипасты</h3>
+            <p>Каждый отчёт — это настроенный один раз маршрут данных.</p>
+            <div class="mini-flow mono">
+              <span class="mini-node dir">Директ</span>
+              <span class="mini-node met">Метрика</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node rep">join · group_by · filter · calc</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node gs">Sheets / CSV</span>
+            </div>
+          </div>
+          <div class="cell cell-metrics">
+            <h3>Метрики, которых нет в кабинетах</h3>
+            <div class="mono">
+              <div class="m-row"><span class="f">расход / лиды</span><b>CPA</b></div>
+              <div class="m-row"><span class="f">расход / выручка</span><b>ДРР</b></div>
+              <div class="m-row"><span class="f">(выручка − расход) / расход</span><b>ROI</b></div>
+            </div>
+          </div>
+          <div class="cell cell-3">
+            <h3>Проекты и клиенты</h3>
+            <p>Отдельный проект на каждого клиента: свои интеграции, отчёты и история запусков.</p>
+          </div>
+          <div class="cell cell-3">
+            <h3>Превью каждого шага</h3>
+            <p>Таблица пересчитывается после каждой трансформации — ошибки видны до выгрузки.</p>
+          </div>
+          <div class="cell cell-3" style="grid-column: span 2">
+            <h3>UTM-разбор</h3>
+            <p>Извлечение меток из ссылок и группировка по source / medium / campaign.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Каналы</span>
+        <h2 class="sec-title" style="color:#fff">Источники и назначения</h2>
+        <p class="sec-sub">Стартовый набор закрывает отчётность по Яндексу; список расширяется по запросам пользователей.</p>
+        <div class="grid g3">
+          <div>
+            <div class="chan-cat">Реклама</div>
+            <div class="chan-row">
+              <span class="src-chip"><span class="dot" style="background:#FC3F1D"></span>Яндекс Директ</span>
+              <span class="src-chip soon">ПромоСтраницы</span>
+              <span class="src-chip soon">Google Ads</span>
+            </div>
+          </div>
+          <div>
+            <div class="chan-cat">Аналитика</div>
+            <div class="chan-row"><span class="src-chip"><span class="dot" style="background:#FFBA00"></span>Яндекс Метрика</span></div>
+          </div>
+          <div>
+            <div class="chan-cat">Назначения</div>
+            <div class="chan-row">
+              <span class="src-chip"><span class="dot" style="background:#34A853"></span>Google Sheets</span>
+              <span class="src-chip"><span class="dot" style="background:#6b7890"></span>CSV</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Как это работает</span>
+        <h2 class="sec-title" style="color:#fff">Четыре шага</h2>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+          <div class="step"><span class="num-badge mono">01</span><h3>Проект</h3><p>Под клиента или направление.</p></div>
+          <div class="step"><span class="num-badge mono">02</span><h3>OAuth</h3><p>Директ, Метрика, Google — в официальных окнах авторизации.</p></div>
+          <div class="step"><span class="num-badge mono">03</span><h3>Конструктор</h3><p>Период → источники → шаги → превью.</p></div>
+          <div class="step"><span class="num-badge mono">04</span><h3>Выгрузка</h3><p>Sheets или CSV, история запусков под рукой.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Безопасность данных</span>
+        <h2 class="sec-title" style="color:#fff">Прозрачные правила доступа</h2>
+        <div class="grid g2">
+          <div class="safe-strip"><div class="safe-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7aa5ff" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg></div><div><h3>OAuth 2.0, без паролей</h3><p>Авторизация в окнах Яндекса и Google; сервису достаётся только токен.</p></div></div>
+          <div class="safe-strip"><div class="safe-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7aa5ff" stroke-width="2"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/></svg></div><div><h3>Только чтение статистики</h3><p>Кампании не управляются: ни ставок, ни остановок — только отчётные данные.</p></div></div>
+          <div class="safe-strip"><div class="safe-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7aa5ff" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg></div><div><h3>Ноль монетизации данных</h3><p>Некоммерческий проект: без рекламы, продажи и «рыночной аналитики» на ваших цифрах.</p></div></div>
+          <div class="safe-strip"><div class="safe-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7aa5ff" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></div><div><h3>Отзыв в один клик</h3><p>Отключение в проекте или в Яндекс ID / Google-аккаунте — токен гаснет сразу.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">Сравнение</span>
+        <h2 class="sec-title" style="color:#fff">Ручной процесс → пайплайн</h2>
+        <table class="cmp">
+          <thead><tr><th style="width:50%">Вручную</th><th>С Report</th></tr></thead>
+          <tbody>
+            <tr><td>CSV из Директа + отчёт из Метрики</td><td class="win">Данные приходят по API</td></tr>
+            <tr><td>VLOOKUP и сводные</td><td class="win">join настраивается один раз</td></tr>
+            <tr><td>CPA и ДРР на калькуляторе</td><td class="win">calc-поля в конструкторе</td></tr>
+            <tr><td>Каждую неделю заново</td><td class="win">«Запустить» в готовом отчёте</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <span class="kicker">FAQ</span>
+        <h2 class="sec-title" style="color:#fff">Частые вопросы</h2>
+        <div>
+          <div class="faq-item"><div class="faq-q">Что сервис видит в моих аккаунтах? <span>−</span></div><div class="faq-a">Статистику кампаний Директа и отчёты Метрики по официальным API — ровно то, что нужно для ваших отчётов.</div></div>
+          <div class="faq-item"><div class="faq-q">Почему бесплатно? <span>+</span></div></div>
+          <div class="faq-item"><div class="faq-q">Как отозвать доступ? <span>+</span></div></div>
+          <div class="faq-item"><div class="faq-q">Какие источники дальше? <span>+</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-final">
+      <div class="wrap">
+        <h2>Постройте первый пайплайн</h2>
+        <p>Регистрация бесплатна. Директ + Метрика → ваша таблица за 10 минут.</p>
+        <a class="btn btn-primary" href="#">Создать аккаунт</a>
+      </div>
+    </section>
+
+    <div class="footer">
+      <div class="wrap">
+        <span class="logo">Rep<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><circle cx="22" cy="12" r="2.6"/><circle cx="19.1" cy="19.1" r="2.35"/><circle cx="12" cy="22" r="2.1"/><circle cx="4.9" cy="19.1" r="1.85"/><circle cx="2" cy="12" r="1.6"/><circle cx="4.9" cy="4.9" r="1.35"/><circle cx="12" cy="2" r="1.1"/><circle cx="19.1" cy="4.9" r="0.9"/></g></svg>rt</span>
+        <span>© 2026 Report — некоммерческий проект</span>
+        <a href="#">Политика конфиденциальности</a>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="shared">
+    <h2>Общее для всех вариантов (независимо от выбора стиля)</h2>
+    <ul>
+      <li>Шапка с якорной навигацией и кнопками входа — сейчас на лендинге её нет вовсе.</li>
+      <li>Заголовок говорит о результате, а не о категории: «ETL-платформа» уходит в подпись/SEO, боль маркетолога — в H1.</li>
+      <li>Блоки: возможности (6) → каналы по категориям с честными «скоро» → 4 шага → безопасность (4 архитектурные гарантии) → сравнение «вручную vs Report» → FAQ → финальный CTA.</li>
+      <li>Микро-строка у CTA: «Некоммерческий проект. Бесплатно, без тарифов и карты» — снимает вопрос «в чём подвох».</li>
+      <li>Логотип уменьшается до шапки; «o»-спиннер из логотипа используется как фирменный элемент (лоадеры, буллеты, схема).</li>
+      <li>Мета-теги: title + description + OG-разметка; рендер лендинга без ожидания ответа API авторизации.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  const tabs = document.querySelectorAll(".tab");
+  const variants = { a: document.getElementById("v-a"), b: document.getElementById("v-b"), c: document.getElementById("v-c") };
+  const notes = { a: document.getElementById("note-a"), b: document.getElementById("note-b"), c: document.getElementById("note-c") };
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const v = tab.dataset.v;
+      tabs.forEach(t => t.setAttribute("aria-selected", String(t === tab)));
+      for (const key of Object.keys(variants)) {
+        const on = key === v;
+        variants[key].hidden = !on;
+        variants[key].classList.toggle("active", on);
+        notes[key].hidden = !on;
+      }
+    });
+  });
+</script>
