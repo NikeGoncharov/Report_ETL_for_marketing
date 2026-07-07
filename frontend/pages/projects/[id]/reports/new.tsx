@@ -1,12 +1,12 @@
-// Создание отчёта: имя + стартовые датасеты. Вся настройка пайплайна —
-// в рабочем пространстве отчёта, куда происходит редирект после создания.
+// Создание отчёта: только имя. Отчёт создаётся пустым — источники
+// добавляются в рабочем пространстве, которое ведёт пользователя по шагам.
 import { useRouter } from "next/router";
 import { useState } from "react";
 import Link from "next/link";
 import Layout from "../../../../components/Layout";
 import { reportsApi } from "../../../../lib/api";
-import { defaultConfig, defaultDataset } from "../../../../types/report";
-import { formatApiError } from "../../../../components/report/DatasetCard";
+import { defaultConfig } from "../../../../types/report";
+import { formatApiError } from "../../../../components/report/format";
 
 export default function NewReportPage() {
   const router = useRouter();
@@ -14,8 +14,6 @@ export default function NewReportPage() {
   const projectId = Number(id);
 
   const [name, setName] = useState("");
-  const [withDirect, setWithDirect] = useState(true);
-  const [withMetrika, setWithMetrika] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,16 +25,9 @@ export default function NewReportPage() {
     setCreating(true);
     setError(null);
     try {
-      const config = defaultConfig();
-      if (withDirect) {
-        config.datasets.push(defaultDataset("direct", []));
-      }
-      if (withMetrika) {
-        config.datasets.push(defaultDataset("metrika", config.datasets.map((d) => d.id)));
-      }
       const report = await reportsApi.create(projectId, {
         name: name.trim(),
-        config: config as unknown as Record<string, unknown>,
+        config: defaultConfig() as unknown as Record<string, unknown>,
       });
       router.push(`/projects/${projectId}/reports/${report.id}`);
     } catch (e) {
@@ -70,20 +61,16 @@ export default function NewReportPage() {
               onChange={(e) => setName(e.target.value)}
               placeholder="Например: Сводка по бренду"
               autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") create();
+              }}
             />
           </label>
 
-          <div className="field-hint" style={{ margin: "16px 0 8px" }}>
-            С каких источников начать (датасеты можно добавить и позже):
+          <div className="field-hint" style={{ margin: "10px 0 0" }}>
+            Источники данных добавляются на следующем шаге — конструктор проведёт по порядку:
+            выгрузка → трансформация → сшивка → выгрузка в таблицу.
           </div>
-          <label className="inline-checkbox">
-            <input type="checkbox" checked={withDirect} onChange={(e) => setWithDirect(e.target.checked)} />
-            Яндекс.Директ — расход, показы, клики
-          </label>
-          <label className="inline-checkbox">
-            <input type="checkbox" checked={withMetrika} onChange={(e) => setWithMetrika(e.target.checked)} />
-            Яндекс.Метрика — визиты, отказы, конверсии
-          </label>
 
           <div style={{ marginTop: 20, display: "flex", gap: 8 }}>
             <button type="button" className="btn btn-primary" onClick={create} disabled={creating}>

@@ -1,6 +1,8 @@
-// Рабочее пространство отчёта: единый редактор пайплайна.
-// Этапы: 1) датасеты выгружены -> 2) трансформированы -> 3) сшиты и
-// сгруппированы -> 4) выгрузка. Каждый этап контролируется превью.
+// Рабочее пространство отчёта: направляемый пайплайн.
+// Система ведёт датасет по состояниям: пусто → добавить источник → настроить
+// и выгрузить (панель) → трансформировать → добавить следующий источник →
+// сшить и выгрузить. Компактные карточки идут слева направо; сшивка и экспорт
+// появляются только после первой успешной выгрузки.
 import { useEffect, useRef, useState } from "react";
 import {
   Catalog, DatasetConfig, DatasetType, DirectCampaign, MetrikaCounter,
@@ -9,9 +11,11 @@ import {
 } from "../../types/report";
 import { catalogApi, directApi, metrikaApi, reportsApi } from "../../lib/api";
 import PeriodPicker from "./PeriodPicker";
-import DatasetCard, { formatApiError } from "./DatasetCard";
+import DatasetCard, { DatasetFetchState } from "./DatasetCard";
+import DatasetDrawer, { DrawerTab } from "./DatasetDrawer";
 import StageThreePanel from "./StageThreePanel";
 import ExportPanel from "./ExportPanel";
+import { formatApiError } from "./format";
 
 export default function ReportWorkspace({
   projectId,
@@ -33,6 +37,11 @@ export default function ReportWorkspace({
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [running, setRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
+  // Состояние выгрузки датасетов в этой сессии: id -> {stage, rows}
+  const [fetchStates, setFetchStates] = useState<Record<string, DatasetFetchState>>({});
+  // Открытая панель настройки: какой датасет и какая вкладка
+  const [drawer, setDrawer] = useState<{ id: string; tab: DrawerTab } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const dirty = useRef(false);
 
   useEffect(() => {
@@ -136,29 +145,44 @@ export default function ReportWorkspace({
     URL.revokeObjectURL(url);
   };
 
+  // Добавление источника сразу открывает панель настройки — система ведёт дальше
   const addDataset = (type: DatasetType) => {
     const ds = defaultDataset(type, config.datasets.map((d) => d.id));
     updateConfig({ ...config, datasets: [...config.datasets, ds] });
+    setAddOpen(false);
+    setDrawer({ id: ds.id, tab: "params" });
   };
 
-  const updateDataset = (index: number, dataset: DatasetConfig) => {
-    const datasets = config.datasets.map((d, i) => (i === index ? dataset : d));
+  const updateDataset = (id: string, dataset: DatasetConfig) => {
+    const datasets = config.datasets.map((d) => (d.id === id ? dataset : d));
     updateConfig({ ...config, datasets });
   };
 
-  const removeDataset = (index: number) => {
-    const removed = config.datasets[index];
-    const datasets = config.datasets.filter((_, i) => i !== index);
+  const removeDataset = (id: string) => {
+    const datasets = config.datasets.filter((d) => d.id !== id);
     const next = { ...config, datasets };
-    if (next.merge.left === removed.id || next.merge.right === removed.id) {
+    if (next.merge.left === id || next.merge.right === id) {
       next.merge = { ...next.merge, enabled: false };
     }
     updateConfig(next);
+    setFetchStates((prev) => {
+      const rest = { ...prev };
+      delete rest[id];
+      return rest;
+    });
+    if (drawer?.id === id) setDrawer(null);
+  };
+
+  const markFetched = (datasetId: string, stage: "fetched" | "transformed", rows: number) => {
+    setFetchStates((prev) => ({ ...prev, [datasetId]: { stage, rows } }));
   };
 
   if (!catalog) {
     return <div className="loading"><p>Загрузка конструктора...</p></div>;
   }
+
+  const anyFetched = config.datasets.some((d) => fetchStates[d.id]);
+  const drawerDataset = drawer ? config.datasets.find((d) => d.id === drawer.id) : undefined;
 
   return (
     <div className="workspace">
@@ -192,101 +216,142 @@ export default function ReportWorkspace({
         </div>
       </section>
 
-      {/* Этапы 1-2: датасеты */}
-      <section className="card stage-card">
-        <div className="card-header stage-header">
-          <span className="stage-num">1–2</span>
-          <div>
-            <h3>Данные</h3>
-            <div className="stage-desc">
-              Каждый датасет выгружается отдельно (состояние 1) и проходит свои шаги
-              трансформации (состояние 2).
-            </div>
-          </div>
-        </div>
-        <div className="card-body">
-          {config.datasets.length === 0 && (
-            <div className="empty-state">Добавьте первый датасет — Директ или Метрику.</div>
-          )}
-          {config.datasets.map((dataset, i) => (
-            <DatasetCard
-              key={dataset.id}
-              dataset={dataset}
-              projectId={projectId}
-              catalog={catalog}
-              campaigns={campaigns}
-              counters={counters}
-              onChange={(d) => updateDataset(i, d)}
-              onRemove={() => removeDataset(i)}
-              onPreview={(datasetId, stage, refresh) => preview(stage, datasetId, refresh)}
-            />
-          ))}
-          <div className="dataset-add">
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => addDataset("direct")}>
-              + Датасет из Директа
+      {/* Источники: пустое поле или лента карточек слева направо */}
+      {config.datasets.length === 0 ? (
+        <section className="ds-empty">
+          <h3>Добавьте первый источник данных</h3>
+          <p>
+            Отчёт собирается по шагам: выгрузите данные источника, при необходимости
+            трансформируйте их — затем добавьте следующий источник.
+          </p>
+          <div className="ds-empty-actions">
+            <button type="button" className="btn btn-primary" onClick={() => addDataset("direct")}>
+              + Яндекс Директ
             </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => addDataset("metrika")}>
-              + Датасет из Метрики
+            <button type="button" className="btn btn-primary" onClick={() => addDataset("metrika")}>
+              + Яндекс Метрика
             </button>
           </div>
-        </div>
-      </section>
-
-      {/* Этап 3: сшивка и группировка */}
-      <section className="card stage-card">
-        <div className="card-header stage-header">
-          <span className="stage-num">3</span>
-          <div>
-            <h3>Сшивка и группировка</h3>
-            <div className="stage-desc">
-              Кампании из кабинета сшиваются с UTM-метками Метрики, затем строки
-              можно сгруппировать (например, Поиск и РСЯ отдельно).
+        </section>
+      ) : (
+        <section className="ds-flow-section">
+          <div className="ds-flow-head">
+            <h3>Источники данных</h3>
+            <span className="field-hint">
+              {anyFetched
+                ? "Данные выгружены — ниже доступны сшивка, группировка и выгрузка."
+                : "Выгрузите данные хотя бы одного источника, чтобы двигаться дальше."}
+            </span>
+          </div>
+          <div className="ds-flow">
+            {config.datasets.map((dataset) => (
+              <DatasetCard
+                key={dataset.id}
+                dataset={dataset}
+                fetchState={fetchStates[dataset.id]}
+                onOpen={(tab) => setDrawer({ id: dataset.id, tab })}
+                onRemove={() => removeDataset(dataset.id)}
+              />
+            ))}
+            <div className={`ds-add-card${addOpen ? " open" : ""}`}>
+              {addOpen ? (
+                <>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => addDataset("direct")}>
+                    + Директ
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => addDataset("metrika")}>
+                    + Метрика
+                  </button>
+                  <button type="button" className="step-btn" onClick={() => setAddOpen(false)}>
+                    отмена
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="ds-add-btn" onClick={() => setAddOpen(true)}>
+                  + Добавить источник
+                </button>
+              )}
             </div>
           </div>
-        </div>
-        <div className="card-body">
-          <StageThreePanel
-            merge={config.merge}
-            grouping={config.grouping}
-            datasets={config.datasets}
-            columnsHint={resultColumns}
-            catalog={catalog}
-            onMergeChange={(merge) => updateConfig({ ...config, merge })}
-            onGroupingChange={(grouping) => updateConfig({ ...config, grouping })}
-            onPreview={(stage) => preview(stage)}
-          />
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Этап 4: экспорт */}
-      <section className="card stage-card">
-        <div className="card-header stage-header">
-          <span className="stage-num">4</span>
-          <div>
-            <h3>Выгрузка</h3>
-            <div className="stage-desc">
-              Итоговый результат (после этапа 3) уходит в Google Sheets. Перед выгрузкой
-              изменения сохраняются автоматически.
+      {/* Итог появляется после первой выгрузки: сшивка/группировка и экспорт */}
+      {anyFetched && (
+        <>
+          <section className="card stage-card">
+            <div className="card-header stage-header">
+              <span className="stage-num">3</span>
+              <div>
+                <h3>Сшивка и группировка</h3>
+                <div className="stage-desc">
+                  Кампании из кабинета сшиваются с UTM-метками Метрики, затем строки
+                  можно сгруппировать (например, Поиск и РСЯ отдельно).
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div className="card-body">
-          {runMessage && (
-            <div className={`alert ${runMessage.startsWith("Ошибка") ? "alert-danger" : "alert-success"}`}>
-              {runMessage}
+            <div className="card-body">
+              <StageThreePanel
+                merge={config.merge}
+                grouping={config.grouping}
+                datasets={config.datasets}
+                columnsHint={resultColumns}
+                catalog={catalog}
+                onMergeChange={(merge) => updateConfig({ ...config, merge })}
+                onGroupingChange={(grouping) => updateConfig({ ...config, grouping })}
+                onPreview={(stage) => preview(stage)}
+              />
             </div>
-          )}
-          <ExportPanel
-            exportConfig={config.export}
-            onChange={(exportConfig) => updateConfig({ ...config, export: exportConfig })}
-            onRun={run}
-            running={running}
-            runs={runs}
-            onDownloadCsv={downloadCsv}
-            csvAvailable={Boolean(finalPreview && finalPreview.row_count > 0)}
-          />
-        </div>
-      </section>
+          </section>
+
+          <section className="card stage-card">
+            <div className="card-header stage-header">
+              <span className="stage-num">4</span>
+              <div>
+                <h3>Выгрузка</h3>
+                <div className="stage-desc">
+                  Итоговый результат (после этапа 3) уходит в Google Sheets. Перед выгрузкой
+                  изменения сохраняются автоматически.
+                </div>
+              </div>
+            </div>
+            <div className="card-body">
+              {runMessage && (
+                <div className={`alert ${runMessage.startsWith("Ошибка") ? "alert-danger" : "alert-success"}`}>
+                  {runMessage}
+                </div>
+              )}
+              <ExportPanel
+                exportConfig={config.export}
+                onChange={(exportConfig) => updateConfig({ ...config, export: exportConfig })}
+                onRun={run}
+                running={running}
+                runs={runs}
+                onDownloadCsv={downloadCsv}
+                csvAvailable={Boolean(finalPreview && finalPreview.row_count > 0)}
+              />
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* Панель настройки датасета */}
+      {drawer && drawerDataset && (
+        <DatasetDrawer
+          dataset={drawerDataset}
+          projectId={projectId}
+          catalog={catalog}
+          campaigns={campaigns}
+          counters={counters}
+          tab={drawer.tab}
+          fetched={Boolean(fetchStates[drawerDataset.id])}
+          onTabChange={(tab) => setDrawer({ id: drawer.id, tab })}
+          onChange={(d) => updateDataset(drawer.id, d)}
+          onClose={() => setDrawer(null)}
+          onPreview={(datasetId, stage, refresh) => preview(stage, datasetId, refresh)}
+          onFetched={markFetched}
+        />
+      )}
     </div>
   );
 }

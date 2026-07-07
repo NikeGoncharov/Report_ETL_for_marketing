@@ -7,7 +7,7 @@ import {
 import { ColumnInput, ChipsInput } from "./fields";
 import { AggregationsEditor } from "./StepsEditor";
 import PreviewTable from "./PreviewTable";
-import { formatApiError } from "./DatasetCard";
+import { formatApiError } from "./format";
 
 export default function StageThreePanel({
   merge,
