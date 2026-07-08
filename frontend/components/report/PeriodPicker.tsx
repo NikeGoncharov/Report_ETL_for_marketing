@@ -172,21 +172,24 @@ export default function PeriodPicker({
 
 // Календарь диапазона: клик — начало, второй клик — конец.
 // Будущие даты недоступны (отчётные API отдают только прошлое).
-function RangeCalendar({
+// Экспортируется отдельно: попап «Обновить выгрузку» показывает его без пресетов.
+export function RangeCalendar({
   from,
   to,
   onChange,
+  monthsCount = 2,
 }: {
   from: string | null;
   to: string | null;
   onChange: (from: string | null, to: string | null) => void;
+  monthsCount?: number;
 }) {
   const todayISO = toISO(new Date());
   const thisMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  // Левый из видимых месяцев; правый не листается дальше текущего
+  const maxLeft = new Date(thisMonth.getFullYear(), thisMonth.getMonth() - (monthsCount - 1), 1);
 
-  // Левый из двух видимых месяцев; правый не листается дальше текущего
   const [view, setView] = useState<Date>(() => {
-    const maxLeft = new Date(thisMonth.getFullYear(), thisMonth.getMonth() - 1, 1);
     if (!from) return maxLeft;
     const base = new Date(Number(from.slice(0, 4)), Number(from.slice(5, 7)) - 1, 1);
     return base > maxLeft ? maxLeft : base;
@@ -195,7 +198,6 @@ function RangeCalendar({
 
   const shift = (delta: number) => {
     const next = new Date(view.getFullYear(), view.getMonth() + delta, 1);
-    const maxLeft = new Date(thisMonth.getFullYear(), thisMonth.getMonth() - 1, 1);
     setView(next > maxLeft ? maxLeft : next);
   };
 
@@ -214,7 +216,11 @@ function RangeCalendar({
   const inRange = (iso: string) =>
     Boolean(from && rangeEnd && iso > from && iso < rangeEnd);
 
-  const months = [view, new Date(view.getFullYear(), view.getMonth() + 1, 1)];
+  const months = Array.from(
+    { length: monthsCount },
+    (_, i) => new Date(view.getFullYear(), view.getMonth() + i, 1),
+  );
+  const nextDisabled = months[months.length - 1].getTime() >= thisMonth.getTime();
 
   return (
     <div className="cal" onMouseLeave={() => setHover(null)}>
@@ -223,7 +229,6 @@ function RangeCalendar({
         const m = month.getMonth();
         const offset = (new Date(y, m, 1).getDay() + 6) % 7; // неделя с понедельника
         const days = new Date(y, m + 1, 0).getDate();
-        const nextDisabled = months[1].getTime() >= thisMonth.getTime();
 
         return (
           <div className="cal-month" key={`${y}-${m}`}>
@@ -238,7 +243,7 @@ function RangeCalendar({
               <span className="cal-title">
                 {MONTHS[m]} {y}
               </span>
-              {mi === 1 ? (
+              {mi === months.length - 1 ? (
                 <button
                   type="button"
                   className="step-btn"

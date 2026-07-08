@@ -1678,6 +1678,247 @@ html {
   margin-top: 14px;
 }
 
+/* Страница клиента: заголовок-крошки */
+.page-crumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 20px;
+}
+
+.page-crumb a {
+  color: var(--gray-400);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color var(--transition);
+}
+
+.page-crumb a:hover {
+  color: var(--primary);
+}
+
+.page-crumb-sep {
+  color: var(--gray-300);
+  font-weight: 400;
+}
+
+/* Страница клиента: карточки интеграций */
+.pint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.pint-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius-lg);
+  background: var(--white);
+}
+
+.pint-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pint-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.pint-details {
+  font-size: 0.85rem;
+  color: var(--gray-700);
+}
+
+.pint-hint {
+  font-size: 0.78rem;
+  color: var(--gray-500);
+}
+
+.pint-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.pint-add {
+  border-style: dashed;
+  background: var(--gray-50);
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.pint-add-label {
+  font-size: 0.85rem;
+  color: var(--gray-600);
+  font-weight: 600;
+}
+
+.pint-add-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Страница клиента: строки отчётов */
+.report-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius-lg);
+  background: var(--white);
+  transition: border-color var(--transition);
+}
+
+.report-row:hover {
+  border-color: var(--gray-300);
+}
+
+.report-row-info {
+  min-width: 220px;
+  flex: 1;
+}
+
+.report-row-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.report-row-sub {
+  font-size: 0.8rem;
+  color: var(--gray-500);
+}
+
+.report-run-note b {
+  color: var(--gray-700);
+  font-weight: 600;
+}
+
+.report-run-note a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.report-run-note a:hover {
+  text-decoration: underline;
+}
+
+.report-run-err {
+  color: var(--danger);
+  display: inline-block;
+  max-width: 560px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.report-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-none {
+  color: var(--gray-500);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+/* Попап «Обновить выгрузку»: календарь на 3 месяца без пресетов.
+   Двойной класс — базовый .tmodal объявлен ниже по файлу и иначе перебивает размеры */
+.tmodal.tmodal-run {
+  width: min(880px, 100%);
+  height: auto;
+  max-height: min(720px, 100%);
+}
+
+.tmodal-run .tmodal-head {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.run-modal-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.run-modal-range {
+  font-size: 0.85rem;
+  color: var(--gray-500);
+  margin-top: 2px;
+}
+
+.run-modal-range b {
+  color: var(--gray-700);
+  font-weight: 600;
+}
+
+.run-modal-body {
+  padding: 18px 20px 8px;
+  overflow-y: auto;
+}
+
+.run-modal-body .cal {
+  justify-content: center;
+}
+
+.run-modal-body .period-popover-hint {
+  text-align: center;
+  margin-top: 10px;
+}
+
+.run-modal-foot {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.run-modal-note {
+  font-size: 0.78rem;
+  color: var(--gray-500);
+  max-width: 520px;
+}
+
+@media (max-width: 900px) {
+  .report-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .report-row-controls {
+    justify-content: flex-start;
+  }
+
+  .report-run-err {
+    max-width: 100%;
+    white-space: normal;
+  }
+}
+
 /* Stats cards */
 .stats-grid {
   display: grid;

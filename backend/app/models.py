@@ -71,6 +71,9 @@ class ReportRun(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     error_message = Column(Text, nullable=True)
     result_url = Column(String(500), nullable=True)  # Google Sheets URL
+    # Фактический период выгрузки (пресеты резолвятся в даты на момент запуска)
+    period_from = Column(String(10), nullable=True)
+    period_to = Column(String(10), nullable=True)
 
     # Relationships
     report = relationship("Report", back_populates="runs")

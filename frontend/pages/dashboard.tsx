@@ -4,6 +4,7 @@ import Link from "next/link";
 import Layout from "../components/Layout";
 import { projectsApi } from "../lib/api";
 import { connectIntegrationPopup, oauthErrorMessage } from "../lib/oauth";
+import { INTEGRATION_META } from "../lib/integrations";
 
 type ProjectIntegration = {
   type: string;
@@ -14,12 +15,6 @@ type Project = {
   name: string;
   created_at: string;
   integrations?: ProjectIntegration[];
-};
-
-const INTEGRATION_META: Record<string, { label: string; short: string; color: string }> = {
-  yandex_direct: { label: "Яндекс Директ", short: "Директ", color: "#FC3F1D" },
-  yandex_metrika: { label: "Яндекс Метрика", short: "Метрика", color: "#FC3F1D" },
-  google_sheets: { label: "Google Sheets", short: "Google Sheets", color: "#34A853" },
 };
 
 export default function Dashboard() {

@@ -27,3 +27,11 @@ async def init_db():
     """Create all tables (for development, use Alembic in production)."""
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Мини-миграции SQLite: create_all не добавляет колонки в существующие таблицы
+        result = await conn.exec_driver_sql("PRAGMA table_info(report_runs)")
+        existing = {row[1] for row in result.fetchall()}
+        for column in ("period_from", "period_to"):
+            if column not in existing:
+                await conn.exec_driver_sql(
+                    f"ALTER TABLE report_runs ADD COLUMN {column} VARCHAR(10)"
+                )

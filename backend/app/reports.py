@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import User, Project, Integration, Report, ReportRun
 from app.schemas import (
-    ReportCreate, ReportUpdate, ReportResponse,
+    ReportCreate, ReportUpdate, ReportResponse, ReportListItem,
     ReportRunResponse, PreviewRequest, PreviewResponse
 )
 from app.auth import get_current_user
@@ -348,23 +348,39 @@ async def run_pipeline_v2(
 
 # ============== Report CRUD ==============
 
-@router.get("/projects/{project_id}/reports", response_model=List[ReportResponse])
+@router.get("/projects/{project_id}/reports", response_model=List[ReportListItem])
 async def get_reports(
     project_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all reports for a project."""
+    """Get all reports for a project with their last run."""
     await verify_project_access(project_id, current_user, db)
-    
+
     result = await db.execute(
         select(Report)
         .where(Report.project_id == project_id)
         .order_by(Report.created_at.desc())
     )
     reports = result.scalars().all()
-    
-    return reports
+
+    last_runs: Dict[int, ReportRunResponse] = {}
+    if reports:
+        runs_result = await db.execute(
+            select(ReportRun)
+            .where(ReportRun.report_id.in_([r.id for r in reports]))
+            .order_by(ReportRun.started_at.desc(), ReportRun.id.desc())
+        )
+        for run in runs_result.scalars():
+            if run.report_id not in last_runs:
+                last_runs[run.report_id] = ReportRunResponse.model_validate(run)
+
+    items = []
+    for report in reports:
+        item = ReportListItem.model_validate(report)
+        item.last_run = last_runs.get(report.id)
+        items.append(item)
+    return items
 
 
 @router.post("/projects/{project_id}/reports", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
@@ -527,15 +543,18 @@ async def run_report(
             detail="Report not found"
         )
     
-    # Create run record
+    # Create run record; период резолвим в даты сразу — история хранит факт
+    period_from, period_to = get_date_range((report.config or {}).get("period") or {})
     run = ReportRun(
         report_id=report_id,
-        status="running"
+        status="running",
+        period_from=period_from,
+        period_to=period_to,
     )
     db.add(run)
     await db.commit()
     await db.refresh(run)
-    
+
     try:
         if report.config.get("version") != 2:
             raise HTTPException(
@@ -615,7 +634,7 @@ async def get_report_runs(
     result = await db.execute(
         select(ReportRun)
         .where(ReportRun.report_id == report_id)
-        .order_by(ReportRun.started_at.desc())
+        .order_by(ReportRun.started_at.desc(), ReportRun.id.desc())
         .limit(20)
     )
     runs = result.scalars().all()

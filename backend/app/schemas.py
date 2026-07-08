@@ -223,9 +223,16 @@ class ReportRunResponse(BaseModel):
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     result_url: Optional[str] = None
+    period_from: Optional[str] = None
+    period_to: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class ReportListItem(ReportResponse):
+    """Строка списка отчётов на странице клиента: отчёт + последний запуск."""
+    last_run: Optional[ReportRunResponse] = None
 
 
 # ============== Preview Schemas ==============

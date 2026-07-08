@@ -38,10 +38,14 @@ async def run_scheduled_report(report_id: int):
             logger.error(f"Report {report_id} not found")
             return
         
-        # Create run record
+        # Create run record; период резолвим в даты сразу — история хранит факт
+        from app.reports import get_date_range
+        period_from, period_to = get_date_range((report.config or {}).get("period") or {})
         run = ReportRun(
             report_id=report_id,
-            status="running"
+            status="running",
+            period_from=period_from,
+            period_to=period_to,
         )
         db.add(run)
         await db.commit()
