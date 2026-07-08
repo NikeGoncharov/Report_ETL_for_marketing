@@ -53,58 +53,146 @@ class ExtractTransformation(BaseTransformation):
         return data
 
 
+def apply_aggregation(agg_func: str, values: List[Any]) -> Any:
+    """Свернуть список значений одной агрегатной функцией (общий код шагов)."""
+    if agg_func == "sum":
+        return sum(values)
+    if agg_func == "avg":
+        return sum(values) / len(values) if values else 0
+    if agg_func == "count":
+        return len(values)
+    if agg_func == "min":
+        return min(values) if values else 0
+    if agg_func == "max":
+        return max(values) if values else 0
+    if agg_func == "first":
+        return values[0] if values else None
+    if agg_func == "last":
+        return values[-1] if values else None
+    raise TransformationError(f"Unknown aggregation function: {agg_func}")
+
+
 class GroupByTransformation(BaseTransformation):
     """Group data by columns and aggregate."""
-    
+
     def transform(self, data: Dict[str, List[Dict]], config: Dict[str, Any]) -> Dict[str, List[Dict]]:
         source = config.get("source")
         columns = config.get("columns", [])
         aggregations = config.get("aggregations", {})
-        
+
         if not source or not columns:
             raise TransformationError("group_by requires: source, columns")
-        
+
         if source not in data:
             raise TransformationError(f"Source '{source}' not found")
-        
+
         # Group by columns
         groups = defaultdict(list)
         for row in data[source]:
             key = tuple(row.get(col, "") for col in columns)
             groups[key].append(row)
-        
+
         # Aggregate
         result = []
         for key, rows in groups.items():
             new_row = {}
-            
+
             # Set group by columns
             for i, col in enumerate(columns):
                 new_row[col] = key[i]
-            
+
             # Apply aggregations
             for col, agg_func in aggregations.items():
                 values = [row.get(col, 0) for row in rows if row.get(col) is not None]
-                
-                if agg_func == "sum":
-                    new_row[col] = sum(values)
-                elif agg_func == "avg":
-                    new_row[col] = sum(values) / len(values) if values else 0
-                elif agg_func == "count":
-                    new_row[col] = len(values)
-                elif agg_func == "min":
-                    new_row[col] = min(values) if values else 0
-                elif agg_func == "max":
-                    new_row[col] = max(values) if values else 0
-                elif agg_func == "first":
-                    new_row[col] = values[0] if values else None
-                elif agg_func == "last":
-                    new_row[col] = values[-1] if values else None
-                else:
-                    raise TransformationError(f"Unknown aggregation function: {agg_func}")
-            
+                new_row[col] = apply_aggregation(agg_func, values)
+
             result.append(new_row)
-        
+
+        data[source] = result
+        return data
+
+
+class MergeRowsTransformation(BaseTransformation):
+    """Объединение строк по признаку: строки, где срез подходит под условие
+    (например, название кампании содержит «search»), схлопываются в одну.
+
+    Значение среза в объединённой строке = group_name; числовые колонки
+    суммируются (или сворачиваются функцией из aggregations), текстовые без
+    заданной агрегации остаются пустыми. Несовпавшие строки не меняются.
+    """
+
+    OPERATORS = ("contains", "startswith", "endswith", "eq")
+
+    def transform(self, data: Dict[str, List[Dict]], config: Dict[str, Any]) -> Dict[str, List[Dict]]:
+        source = config.get("source")
+        column = config.get("column")
+        op = config.get("operator") or "contains"
+        value = config.get("value")
+        group_name = config.get("group_name")
+        aggregations = config.get("aggregations") or {}
+
+        if not all([source, column, group_name]) or value in (None, ""):
+            raise TransformationError("merge_rows requires: source, column, value, group_name")
+        if op not in self.OPERATORS:
+            raise TransformationError(f"merge_rows: unknown operator '{op}'")
+        if source not in data:
+            raise TransformationError(f"Source '{source}' not found")
+
+        # Названия кампаний сравниваем без учёта регистра, как в сшивке
+        needle = str(value).strip().lower()
+
+        def matches(row: Dict) -> bool:
+            cell = str(row.get(column) or "").lower()
+            if op == "contains":
+                return needle in cell
+            if op == "startswith":
+                return cell.startswith(needle)
+            if op == "endswith":
+                return cell.endswith(needle)
+            return cell == needle
+
+        rows = data[source]
+        matched = [row for row in rows if matches(row)]
+        if not matched:
+            return data
+
+        columns_seen: List[str] = []
+        for row in matched:
+            for key in row.keys():
+                if key not in columns_seen:
+                    columns_seen.append(key)
+
+        merged: Dict[str, Any] = {}
+        for col in columns_seen:
+            if col == column:
+                merged[col] = group_name
+                continue
+            values = [row.get(col) for row in matched if row.get(col) is not None]
+            agg_func = aggregations.get(col)
+            if agg_func is None:
+                numeric = [
+                    v for v in values
+                    if isinstance(v, (int, float)) and not isinstance(v, bool)
+                ]
+                if values and len(numeric) == len(values):
+                    agg_func = "sum"
+                else:
+                    # разные тексты не угадываем — оставляем пусто
+                    merged[col] = ""
+                    continue
+            merged[col] = apply_aggregation(agg_func, values)
+
+        # Объединённая строка встаёт на место первой совпавшей
+        result = []
+        inserted = False
+        for row in rows:
+            if matches(row):
+                if not inserted:
+                    result.append(merged)
+                    inserted = True
+            else:
+                result.append(row)
+
         data[source] = result
         return data
 
@@ -352,6 +440,77 @@ class CalculateTransformation(BaseTransformation):
         return data
 
 
+class FindReplaceTransformation(BaseTransformation):
+    """«Найти и заменить» как в Excel: * означает любое количество символов.
+
+    Примеры: найти «_*», заменить на пусто — удаляет «_» и всё после него;
+    найти «*_» — удаляет всё до последнего «_» включительно. Поиск без учёта
+    регистра. Меняются только строковые значения; числа не трогаем.
+    """
+
+    def transform(self, data: Dict[str, List[Dict]], config: Dict[str, Any]) -> Dict[str, List[Dict]]:
+        source = config.get("source")
+        column = config.get("column")
+        find = config.get("find")
+        replace = config.get("replace") or ""
+
+        if not all([source, column]) or find in (None, ""):
+            raise TransformationError("find_replace requires: source, column, find")
+        if source not in data:
+            raise TransformationError(f"Source '{source}' not found")
+
+        find = str(find)
+        # Маска целиком из звёздочек совпадает с чем угодно — просто присваиваем
+        replace_all = not find.strip("*")
+        pattern = None
+        if not replace_all:
+            # Excel-маска -> regex: * становится .*, остальное экранируется
+            pattern = re.compile(
+                ".*".join(re.escape(part) for part in find.split("*")),
+                re.IGNORECASE,
+            )
+
+        result = []
+        for row in data[source]:
+            new_row = row.copy()
+            value = new_row.get(column)
+            if isinstance(value, str):
+                if replace_all:
+                    new_row[column] = replace
+                else:
+                    # lambda, чтобы \ в строке замены не считались regex-ссылками
+                    new_row[column] = pattern.sub(lambda _: replace, value)
+            result.append(new_row)
+
+        data[source] = result
+        return data
+
+
+class ColumnsTransformation(BaseTransformation):
+    """Порядок колонок: перечисленные идут первыми, остальные — следом
+    в исходном порядке. Ничего не удаляется."""
+
+    def transform(self, data: Dict[str, List[Dict]], config: Dict[str, Any]) -> Dict[str, List[Dict]]:
+        source = config.get("source")
+        order = config.get("columns") or []
+
+        if not source or not order:
+            raise TransformationError("columns requires: source, columns")
+        if source not in data:
+            raise TransformationError(f"Source '{source}' not found")
+
+        result = []
+        for row in data[source]:
+            new_row = {key: row[key] for key in order if key in row}
+            for key, value in row.items():
+                if key not in new_row:
+                    new_row[key] = value
+            result.append(new_row)
+
+        data[source] = result
+        return data
+
+
 class SortTransformation(BaseTransformation):
     """Sort data by columns."""
     
@@ -385,6 +544,9 @@ TRANSFORMATIONS = {
     "filter": FilterTransformation(),
     "calculate": CalculateTransformation(),
     "sort": SortTransformation(),
+    "find_replace": FindReplaceTransformation(),
+    "merge_rows": MergeRowsTransformation(),
+    "columns": ColumnsTransformation(),
 }
 
 

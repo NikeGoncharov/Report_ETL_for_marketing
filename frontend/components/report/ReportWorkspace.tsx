@@ -12,7 +12,8 @@ import {
 import { catalogApi, directApi, metrikaApi, reportsApi } from "../../lib/api";
 import PeriodPicker from "./PeriodPicker";
 import DatasetCard, { DatasetFetchState } from "./DatasetCard";
-import DatasetDrawer, { DrawerTab } from "./DatasetDrawer";
+import DatasetDrawer from "./DatasetDrawer";
+import TransformModal from "./TransformModal";
 import StageThreePanel from "./StageThreePanel";
 import ExportPanel from "./ExportPanel";
 import { formatApiError } from "./format";
@@ -39,8 +40,9 @@ export default function ReportWorkspace({
   const [runMessage, setRunMessage] = useState<string | null>(null);
   // Состояние выгрузки датасетов в этой сессии: id -> {stage, rows}
   const [fetchStates, setFetchStates] = useState<Record<string, DatasetFetchState>>({});
-  // Открытая панель настройки: какой датасет и какая вкладка
-  const [drawer, setDrawer] = useState<{ id: string; tab: DrawerTab } | null>(null);
+  // Открытая панель выгрузки (справа) и окно трансформации (поверх экрана)
+  const [drawer, setDrawer] = useState<{ id: string } | null>(null);
+  const [transform, setTransform] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const dirty = useRef(false);
 
@@ -150,7 +152,7 @@ export default function ReportWorkspace({
     const ds = defaultDataset(type, config.datasets.map((d) => d.id));
     updateConfig({ ...config, datasets: [...config.datasets, ds] });
     setAddOpen(false);
-    setDrawer({ id: ds.id, tab: "params" });
+    setDrawer({ id: ds.id });
   };
 
   const updateDataset = (id: string, dataset: DatasetConfig) => {
@@ -171,6 +173,7 @@ export default function ReportWorkspace({
       return rest;
     });
     if (drawer?.id === id) setDrawer(null);
+    if (transform === id) setTransform(null);
   };
 
   const markFetched = (datasetId: string, stage: "fetched" | "transformed", rows: number) => {
@@ -183,6 +186,7 @@ export default function ReportWorkspace({
 
   const anyFetched = config.datasets.some((d) => fetchStates[d.id]);
   const drawerDataset = drawer ? config.datasets.find((d) => d.id === drawer.id) : undefined;
+  const transformDataset = transform ? config.datasets.find((d) => d.id === transform) : undefined;
 
   return (
     <div className="workspace">
@@ -249,7 +253,9 @@ export default function ReportWorkspace({
                 key={dataset.id}
                 dataset={dataset}
                 fetchState={fetchStates[dataset.id]}
-                onOpen={(tab) => setDrawer({ id: dataset.id, tab })}
+                onOpen={(target) =>
+                  target === "steps" ? setTransform(dataset.id) : setDrawer({ id: dataset.id })
+                }
                 onRemove={() => removeDataset(dataset.id)}
               />
             ))}
@@ -335,7 +341,7 @@ export default function ReportWorkspace({
         </>
       )}
 
-      {/* Панель настройки датасета */}
+      {/* Панель выгрузки датасета (справа) */}
       {drawer && drawerDataset && (
         <DatasetDrawer
           dataset={drawerDataset}
@@ -343,11 +349,25 @@ export default function ReportWorkspace({
           catalog={catalog}
           campaigns={campaigns}
           counters={counters}
-          tab={drawer.tab}
           fetched={Boolean(fetchStates[drawerDataset.id])}
-          onTabChange={(tab) => setDrawer({ id: drawer.id, tab })}
           onChange={(d) => updateDataset(drawer.id, d)}
           onClose={() => setDrawer(null)}
+          onOpenTransform={() => {
+            setDrawer(null);
+            setTransform(drawerDataset.id);
+          }}
+          onPreview={(datasetId, stage, refresh) => preview(stage, datasetId, refresh)}
+          onFetched={markFetched}
+        />
+      )}
+
+      {/* Окно трансформации (поверх экрана) */}
+      {transformDataset && (
+        <TransformModal
+          dataset={transformDataset}
+          catalog={catalog}
+          onChange={(d) => updateDataset(transformDataset.id, d)}
+          onClose={() => setTransform(null)}
           onPreview={(datasetId, stage, refresh) => preview(stage, datasetId, refresh)}
           onFetched={markFetched}
         />

@@ -1,6 +1,6 @@
-// Выплывающая панель настройки датасета. Ведёт датасет по состояниям:
-// вкладка «Выгрузка» (параметры + предварительная выгрузка, stage=fetched) →
-// вкладка «Трансформация» (шаги + превью stage=transformed, доступна после выгрузки).
+// Выплывающая панель выгрузки датасета: параметры (кампании/срезы/показатели
+// или счётчик/метрики) + предварительная выгрузка (stage=fetched).
+// Трансформация живёт отдельно — в модальном окне TransformModal.
 import { useEffect, useState } from "react";
 import {
   Catalog, DatasetConfig, DirectCampaign, MetrikaCounter, MetrikaGoal,
@@ -8,11 +8,8 @@ import {
 } from "../../types/report";
 import { metrikaApi } from "../../lib/api";
 import { CheckboxGrid } from "./fields";
-import StepsEditor from "./StepsEditor";
 import PreviewTable from "./PreviewTable";
 import { formatApiError } from "./format";
-
-export type DrawerTab = "params" | "steps";
 
 export default function DatasetDrawer({
   dataset,
@@ -20,11 +17,10 @@ export default function DatasetDrawer({
   catalog,
   campaigns,
   counters,
-  tab,
   fetched,
-  onTabChange,
   onChange,
   onClose,
+  onOpenTransform,
   onPreview,
   onFetched,
 }: {
@@ -33,17 +29,18 @@ export default function DatasetDrawer({
   catalog: Catalog;
   campaigns: DirectCampaign[];
   counters: MetrikaCounter[];
-  tab: DrawerTab;
   // датасет уже успешно выгружался в этой сессии
   fetched: boolean;
-  onTabChange: (tab: DrawerTab) => void;
   onChange: (dataset: DatasetConfig) => void;
   onClose: () => void;
+  // «К трансформации»: закрыть панель и открыть модалку шагов
+  onOpenTransform: () => void;
   onPreview: (datasetId: string, stage: PipelineStage, refresh?: boolean) => Promise<PreviewResult>;
   onFetched: (datasetId: string, stage: "fetched" | "transformed", rows: number) => void;
 }) {
   const [preview, setPreview] = useState<PreviewResult | null>(null);
-  const [previewStage, setPreviewStage] = useState<PipelineStage | null>(null);
+  // выгрузка сделана в этом открытии панели (для подписи под таблицей)
+  const [fetchedNow, setFetchedNow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [goals, setGoals] = useState<MetrikaGoal[]>([]);
@@ -78,17 +75,17 @@ export default function DatasetDrawer({
     };
   }, [dataset.type, dataset.counter_id, projectId]);
 
-  const runPreview = async (stage: "fetched" | "transformed", refresh = false) => {
+  const runPreview = async (refresh = false) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await onPreview(dataset.id, stage, refresh);
+      const result = await onPreview(dataset.id, "fetched", refresh);
       setPreview(result);
-      setPreviewStage(stage);
-      onFetched(dataset.id, stage, result.row_count);
+      setFetchedNow(true);
+      onFetched(dataset.id, "fetched", result.row_count);
     } catch (e) {
       setPreview(null);
-      setPreviewStage(null);
+      setFetchedNow(false);
       setError(formatApiError(e));
     } finally {
       setLoading(false);
@@ -124,186 +121,136 @@ export default function DatasetDrawer({
           </button>
         </div>
 
-        <div className="drawer-tabs">
-          <button
-            type="button"
-            className={`drawer-tab${tab === "params" ? " active" : ""}`}
-            onClick={() => onTabChange("params")}
-          >
-            <span className="step-num">1</span> Выгрузка
-          </button>
-          <button
-            type="button"
-            className={`drawer-tab${tab === "steps" ? " active" : ""}`}
-            onClick={() => onTabChange("steps")}
-            disabled={!fetched}
-            title={fetched ? "" : "Сначала сделайте предварительную выгрузку"}
-          >
-            <span className="step-num">2</span> Трансформация
-            {!fetched && <span className="drawer-lock" aria-hidden="true">🔒</span>}
-          </button>
-        </div>
-
         <div className="drawer-body">
-          {tab === "params" ? (
+          {isDirect ? (
             <>
-              {isDirect ? (
-                <>
-                  <div className="param-block">
-                    <div className="field-hint">Кампании (пусто = все):</div>
-                    <CampaignPicker
-                      campaigns={campaigns}
-                      selected={dataset.campaign_ids || []}
-                      onChange={(ids) => onChange({ ...dataset, campaign_ids: ids })}
-                    />
-                  </div>
-                  <div className="param-block param-row">
-                    <label className="input-label">
-                      Детализация
-                      <select
-                        className="input"
-                        value={dataset.group_by || "campaign"}
-                        onChange={(e) => onChange({ ...dataset, group_by: e.target.value as "campaign" | "day" })}
-                      >
-                        <option value="campaign">По кампаниям</option>
-                        <option value="day">По дням</option>
-                      </select>
-                    </label>
-                    <label className="inline-checkbox vat-toggle">
-                      <input
-                        type="checkbox"
-                        checked={dataset.include_vat !== false}
-                        onChange={(e) => onChange({ ...dataset, include_vat: e.target.checked })}
-                      />
-                      Расход с НДС
-                    </label>
-                  </div>
-                  <div className="param-block">
-                    <div className="field-hint">Срезы:</div>
-                    <CheckboxGrid
-                      options={directDimensions}
-                      selected={(dataset.fields || []).filter((f) => directDimensions.some((d) => d.id === f))}
-                      onChange={(dims) => {
-                        const metrics = (dataset.fields || []).filter((f) => directMetrics.some((m) => m.id === f));
-                        onChange({ ...dataset, fields: [...dims, ...metrics] });
-                      }}
-                    />
-                  </div>
-                  <div className="param-block">
-                    <div className="field-hint">Показатели:</div>
-                    <CheckboxGrid
-                      options={directMetrics}
-                      selected={(dataset.fields || []).filter((f) => directMetrics.some((m) => m.id === f))}
-                      onChange={(mets) => {
-                        const dims = (dataset.fields || []).filter((f) => directDimensions.some((d) => d.id === f));
-                        onChange({ ...dataset, fields: [...dims, ...mets] });
-                      }}
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="param-block param-row">
-                    <label className="input-label">
-                      Счётчик
-                      <select
-                        className="input"
-                        value={dataset.counter_id ?? ""}
-                        onChange={(e) =>
-                          onChange({ ...dataset, counter_id: e.target.value ? Number(e.target.value) : undefined })
-                        }
-                      >
-                        <option value="">— выберите счётчик —</option>
-                        {counters.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.id})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="param-block">
-                    <div className="field-hint">Метрики:</div>
-                    <CheckboxGrid
-                      options={catalog.metrika_metrics}
-                      selected={dataset.metrics || []}
-                      onChange={(metrics) => onChange({ ...dataset, metrics })}
-                    />
-                  </div>
-                  <div className="param-block">
-                    <div className="field-hint">Измерения (срезы):</div>
-                    <CheckboxGrid
-                      options={catalog.metrika_dimensions}
-                      selected={dataset.dimensions || []}
-                      onChange={(dimensions) => onChange({ ...dataset, dimensions })}
-                    />
-                  </div>
-                  {goals.length > 0 && (
-                    <div className="param-block">
-                      <div className="field-hint">Цели (добавят колонку goal…reaches):</div>
-                      <CheckboxGrid
-                        options={goals.map((g) => ({ id: String(g.id), label: g.name }))}
-                        selected={(dataset.goals || []).map(String)}
-                        onChange={(ids) => onChange({ ...dataset, goals: ids.map(Number) })}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
+              <div className="param-block">
+                <div className="field-hint">Кампании (пусто = все):</div>
+                <CampaignPicker
+                  campaigns={campaigns}
+                  selected={dataset.campaign_ids || []}
+                  onChange={(ids) => onChange({ ...dataset, campaign_ids: ids })}
+                />
+              </div>
+              <div className="param-block param-row">
+                <label className="input-label">
+                  Детализация
+                  <select
+                    className="input"
+                    value={dataset.group_by || "campaign"}
+                    onChange={(e) => onChange({ ...dataset, group_by: e.target.value as "campaign" | "day" })}
+                  >
+                    <option value="campaign">По кампаниям</option>
+                    <option value="day">По дням</option>
+                  </select>
+                </label>
+                <label className="inline-checkbox vat-toggle">
+                  <input
+                    type="checkbox"
+                    checked={dataset.include_vat !== false}
+                    onChange={(e) => onChange({ ...dataset, include_vat: e.target.checked })}
+                  />
+                  Расход с НДС
+                </label>
+              </div>
+              <div className="param-block">
+                <div className="field-hint">Срезы:</div>
+                <CheckboxGrid
+                  options={directDimensions}
+                  selected={(dataset.fields || []).filter((f) => directDimensions.some((d) => d.id === f))}
+                  onChange={(dims) => {
+                    const metrics = (dataset.fields || []).filter((f) => directMetrics.some((m) => m.id === f));
+                    onChange({ ...dataset, fields: [...dims, ...metrics] });
+                  }}
+                />
+              </div>
+              <div className="param-block">
+                <div className="field-hint">Показатели:</div>
+                <CheckboxGrid
+                  options={directMetrics}
+                  selected={(dataset.fields || []).filter((f) => directMetrics.some((m) => m.id === f))}
+                  onChange={(mets) => {
+                    const dims = (dataset.fields || []).filter((f) => directDimensions.some((d) => d.id === f));
+                    onChange({ ...dataset, fields: [...dims, ...mets] });
+                  }}
+                />
+              </div>
             </>
           ) : (
             <>
-              <div className="field-hint" style={{ marginBottom: 8 }}>
-                Шаги применяются к выгруженным данным по порядку. Подсказки колонок — из последнего превью.
+              <div className="param-block param-row">
+                <label className="input-label">
+                  Счётчик
+                  <select
+                    className="input"
+                    value={dataset.counter_id ?? ""}
+                    onChange={(e) =>
+                      onChange({ ...dataset, counter_id: e.target.value ? Number(e.target.value) : undefined })
+                    }
+                  >
+                    <option value="">— выберите счётчик —</option>
+                    {counters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.id})
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-              <StepsEditor
-                steps={dataset.steps}
-                columns={preview?.columns || []}
-                catalog={catalog}
-                onChange={(steps) => onChange({ ...dataset, steps })}
-              />
+              <div className="param-block">
+                <div className="field-hint">Метрики:</div>
+                <CheckboxGrid
+                  options={catalog.metrika_metrics}
+                  selected={dataset.metrics || []}
+                  onChange={(metrics) => onChange({ ...dataset, metrics })}
+                />
+              </div>
+              <div className="param-block">
+                <div className="field-hint">Измерения (срезы):</div>
+                <CheckboxGrid
+                  options={catalog.metrika_dimensions}
+                  selected={dataset.dimensions || []}
+                  onChange={(dimensions) => onChange({ ...dataset, dimensions })}
+                />
+              </div>
+              {goals.length > 0 && (
+                <div className="param-block">
+                  <div className="field-hint">Цели (добавят колонку goal…reaches):</div>
+                  <CheckboxGrid
+                    options={goals.map((g) => ({ id: String(g.id), label: g.name }))}
+                    selected={(dataset.goals || []).map(String)}
+                    onChange={(ids) => onChange({ ...dataset, goals: ids.map(Number) })}
+                  />
+                </div>
+              )}
             </>
           )}
 
           <PreviewTable preview={preview} loading={loading} error={error} />
-          {previewStage && !loading && !error && (
+          {fetchedNow && !loading && !error && (
             <div className="preview-stage-label" style={{ marginTop: 6 }}>
-              {previewStage === "fetched" ? "Состояние 1: как выгружено" : "Состояние 2: после шагов"}
+              Состояние 1: как выгружено
             </div>
           )}
         </div>
 
         <div className="drawer-foot">
-          {tab === "params" ? (
+          <button type="button" className="btn btn-primary" onClick={() => runPreview()} disabled={loading}>
+            {loading ? "Выгрузка..." : fetched ? "Выгрузить заново" : "Предварительная выгрузка"}
+          </button>
+          {fetched && (
             <>
-              <button type="button" className="btn btn-primary" onClick={() => runPreview("fetched")} disabled={loading}>
-                {loading ? "Выгрузка..." : fetched ? "Выгрузить заново" : "Предварительная выгрузка"}
-              </button>
-              {fetched && (
-                <button type="button" className="btn btn-secondary" onClick={() => onTabChange("steps")}>
-                  К трансформации →
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => runPreview("transformed")}
-                disabled={loading || dataset.steps.length === 0}
-                title={dataset.steps.length === 0 ? "Добавьте хотя бы один шаг" : ""}
-              >
-                {loading ? "Загрузка..." : "Превью после шагов"}
-              </button>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                onClick={() => runPreview(previewStage === "transformed" ? "transformed" : "fetched", true)}
+                onClick={() => runPreview(true)}
                 disabled={loading}
                 title="Заново сходить в API, минуя кэш"
               >
                 ⟳ Из API
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={onOpenTransform}>
+                К трансформации →
               </button>
             </>
           )}

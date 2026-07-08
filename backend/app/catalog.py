@@ -142,13 +142,17 @@ FILTER_OPERATORS = [
     {"id": "not_null", "label": "не пусто"},
 ]
 
+# Порядок = порядок в списке «+ Добавить шаг» конструктора (частые — выше)
 STEP_TYPES = [
+    {"id": "sort", "label": "Сортировка"},
+    {"id": "find_replace", "label": "Найти и заменить"},
     {"id": "filter", "label": "Фильтр строк"},
-    {"id": "extract", "label": "Извлечение (regex)"},
-    {"id": "rename", "label": "Переименование колонок"},
+    {"id": "merge_rows", "label": "Объединение по признаку"},
     {"id": "calculate", "label": "Вычисляемая колонка"},
     {"id": "group_by", "label": "Группировка"},
-    {"id": "sort", "label": "Сортировка"},
+    {"id": "rename", "label": "Переименование колонок"},
+    {"id": "extract", "label": "Извлечение (regex)"},
+    {"id": "columns", "label": "Порядок колонок"},
 ]
 
 

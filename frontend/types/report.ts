@@ -1,7 +1,9 @@
 // Типы конфига отчёта. Единые для всех страниц и компонентов конструктора.
 // Должны соответствовать backend/app/schemas.py (ReportConfigV2 и связанные).
 
-export type StepType = "extract" | "filter" | "rename" | "calculate" | "sort" | "group_by";
+export type StepType =
+  | "extract" | "filter" | "rename" | "calculate" | "sort" | "group_by"
+  | "find_replace" | "merge_rows" | "columns";
 
 export type StepConfig = {
   type: StepType;
@@ -15,6 +17,11 @@ export type StepConfig = {
   value?: string | number;
   formula?: string;
   descending?: boolean;
+  // find_replace: маска поиска (* = любые символы) и строка замены
+  find?: string;
+  replace?: string;
+  // merge_rows: значение среза для объединённой строки
+  group_name?: string;
 };
 
 export type DatasetType = "direct" | "metrika";

@@ -1,8 +1,9 @@
 // Компактная карточка датасета в ленте пайплайна. Показывает состояние
-// («выгружено / не выгружено», число шагов) и открывает панель настройки.
-// Вся конфигурация — в DatasetDrawer.
+// («выгружено / не выгружено», число шагов) и открывает настройку:
+// выгрузка — в панели DatasetDrawer, трансформация — в окне TransformModal.
 import { DatasetConfig } from "../../types/report";
-import { DrawerTab } from "./DatasetDrawer";
+
+export type DatasetOpenTarget = "params" | "steps";
 
 export type DatasetFetchState = {
   stage: "fetched" | "transformed";
@@ -17,7 +18,7 @@ export default function DatasetCard({
 }: {
   dataset: DatasetConfig;
   fetchState?: DatasetFetchState;
-  onOpen: (tab: DrawerTab) => void;
+  onOpen: (target: DatasetOpenTarget) => void;
   onRemove: () => void;
 }) {
   const isDirect = dataset.type === "direct";

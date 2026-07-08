@@ -10,7 +10,13 @@ const DEFAULT_STEPS: Record<StepType, StepConfig> = {
   calculate: { type: "calculate", output_column: "", formula: "" },
   group_by: { type: "group_by", columns: [], aggregations: {} },
   sort: { type: "sort", column: "", descending: false },
+  find_replace: { type: "find_replace", column: "", find: "", replace: "" },
+  merge_rows: { type: "merge_rows", column: "", operator: "contains", value: "", group_name: "", aggregations: {} },
+  columns: { type: "columns", columns: [] },
 };
+
+// Подмножество операторов для «Объединения по признаку» (текстовые условия)
+const MERGE_OPERATOR_IDS = ["contains", "startswith", "endswith", "eq"];
 
 export default function StepsEditor({
   steps,
@@ -164,6 +170,82 @@ function StepForm({
             <input type="checkbox" checked={Boolean(step.descending)} onChange={(e) => onChange({ descending: e.target.checked })} />
             по убыванию
           </label>
+        </div>
+      );
+    case "find_replace":
+      return (
+        <div className="step-fields-column">
+          <div className="step-fields">
+            <ColumnInput value={step.column || ""} onChange={(v) => onChange({ column: v })} suggestions={columns} placeholder="Колонка" />
+            <input
+              className="input"
+              value={step.find || ""}
+              onChange={(e) => onChange({ find: e.target.value })}
+              placeholder="Найти (напр. _*)"
+            />
+            <span className="field-arrow">→</span>
+            <input
+              className="input"
+              value={step.replace || ""}
+              onChange={(e) => onChange({ replace: e.target.value })}
+              placeholder="Заменить на (пусто = удалить)"
+            />
+          </div>
+          <div className="field-hint">
+            Как в Excel: <code>*</code> — любые символы. «Найти <code>_*</code>, заменить на пусто» удалит
+            «_» и всё после него. Регистр не учитывается.
+          </div>
+        </div>
+      );
+    case "merge_rows":
+      return (
+        <div className="step-fields-column">
+          <div className="step-fields">
+            <ColumnInput value={step.column || ""} onChange={(v) => onChange({ column: v })} suggestions={columns} placeholder="Срез (напр. campaignname)" />
+            <select className="input" value={step.operator || "contains"} onChange={(e) => onChange({ operator: e.target.value })}>
+              {catalog.filter_operators
+                .filter((op) => MERGE_OPERATOR_IDS.includes(op.id))
+                .map((op) => (
+                  <option key={op.id} value={op.id}>{op.label}</option>
+                ))}
+            </select>
+            <input
+              className="input"
+              value={String(step.value ?? "")}
+              onChange={(e) => onChange({ value: e.target.value })}
+              placeholder="Признак (напр. search)"
+            />
+          </div>
+          <div className="step-fields">
+            <input
+              className="input step-grow"
+              value={step.group_name || ""}
+              onChange={(e) => onChange({ group_name: e.target.value })}
+              placeholder="Название объединённой строки (напр. Search-кампании)"
+            />
+          </div>
+          <div>
+            <div className="field-hint">
+              Совпавшие строки объединятся в одну: клики, показы и другие числа просуммируются.
+              Ниже можно выбрать другую функцию (среднее, максимум…):
+            </div>
+            <AggregationsEditor
+              aggregations={step.aggregations || {}}
+              columns={columns}
+              catalogAggs={catalog.aggregations}
+              onChange={(aggregations) => onChange({ aggregations })}
+            />
+          </div>
+        </div>
+      );
+    case "columns":
+      return (
+        <div className="step-fields-column">
+          <ChipsInput values={step.columns || []} onChange={(v) => onChange({ columns: v })} suggestions={columns} />
+          <div className="field-hint">
+            Перечисленные колонки идут первыми, остальные — следом. Проще всего перетащить
+            заголовки прямо в таблице превью — шаг обновится сам.
+          </div>
         </div>
       );
     default:

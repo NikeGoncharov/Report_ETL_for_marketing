@@ -93,7 +93,10 @@ class StepConfig(BaseModel):
     """Шаг трансформации внутри датасета. Поле source проставляет движок."""
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["extract", "filter", "rename", "calculate", "sort", "group_by"]
+    type: Literal[
+        "extract", "filter", "rename", "calculate", "sort", "group_by",
+        "find_replace", "merge_rows", "columns",
+    ]
     column: Optional[str] = None
     columns: Optional[List[str]] = None
     pattern: Optional[str] = None
@@ -104,6 +107,11 @@ class StepConfig(BaseModel):
     value: Optional[Any] = None
     formula: Optional[str] = None
     descending: Optional[bool] = None
+    # find_replace: маска поиска (* = любые символы) и строка замены
+    find: Optional[str] = None
+    replace: Optional[str] = None
+    # merge_rows: значение среза для объединённой строки
+    group_name: Optional[str] = None
 
 
 class DatasetConfig(BaseModel):

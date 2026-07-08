@@ -57,7 +57,7 @@ export default function PreviewTable({
   );
 }
 
-function formatCell(value: unknown): string {
+export function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "number") {
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
