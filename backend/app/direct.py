@@ -207,13 +207,14 @@ async def fetch_direct_stats(
         integration.access_token,
     )
     campaigns = campaigns_result.get("Campaigns", [])
+    # Statistics, как и DailyBudget, у части кампаний приходит как null
     return [
         {
             "campaign_id": c["Id"],
             "campaign_name": c["Name"],
-            "impressions": c.get("Statistics", {}).get("Impressions", 0),
-            "clicks": c.get("Statistics", {}).get("Clicks", 0),
-            "cost": c.get("Statistics", {}).get("Cost", 0),
+            "impressions": (c.get("Statistics") or {}).get("Impressions", 0),
+            "clicks": (c.get("Statistics") or {}).get("Clicks", 0),
+            "cost": (c.get("Statistics") or {}).get("Cost", 0),
         }
         for c in campaigns
     ]
@@ -251,7 +252,8 @@ async def get_campaigns(
             "state": c.get("State"),
             "type": c.get("Type"),
             "start_date": c.get("StartDate"),
-            "daily_budget": c.get("DailyBudget", {}).get("Amount"),
+            # У кампаний с общим счётом/без бюджета API отдаёт DailyBudget: null
+            "daily_budget": (c.get("DailyBudget") or {}).get("Amount"),
         }
         for c in campaigns
     ]
