@@ -1,9 +1,9 @@
-// Редактор цепочки шагов трансформации датасета (состояние 2).
-// Формы есть для всех типов шагов; подсказки колонок берутся из превью.
+// Формы шагов трансформации. Используются контейнерами workflow
+// в TransformModal; AggregationsEditor также нужен этапу сшивки/группировки.
 import { Catalog, StepConfig, StepType } from "../../types/report";
 import { ColumnInput, ChipsInput } from "./fields";
 
-const DEFAULT_STEPS: Record<StepType, StepConfig> = {
+export const DEFAULT_STEPS: Record<StepType, StepConfig> = {
   filter: { type: "filter", column: "", operator: "eq", value: "" },
   extract: { type: "extract", column: "", pattern: "", output_column: "" },
   rename: { type: "rename", mapping: {} },
@@ -11,85 +11,14 @@ const DEFAULT_STEPS: Record<StepType, StepConfig> = {
   group_by: { type: "group_by", columns: [], aggregations: {} },
   sort: { type: "sort", column: "", descending: false },
   find_replace: { type: "find_replace", column: "", find: "", replace: "" },
-  merge_rows: { type: "merge_rows", column: "", operator: "contains", value: "", group_name: "", aggregations: {} },
+  merge_rows: { type: "merge_rows", mode: "condition", column: "", operator: "contains", value: "", group_name: "", aggregations: {} },
   columns: { type: "columns", columns: [] },
 };
 
 // Подмножество операторов для «Объединения по признаку» (текстовые условия)
 const MERGE_OPERATOR_IDS = ["contains", "startswith", "endswith", "eq"];
 
-export default function StepsEditor({
-  steps,
-  columns,
-  catalog,
-  onChange,
-}: {
-  steps: StepConfig[];
-  columns: string[];
-  catalog: Catalog;
-  onChange: (steps: StepConfig[]) => void;
-}) {
-  const stepLabel = (type: string) =>
-    catalog.step_types.find((s) => s.id === type)?.label || type;
-
-  const updateStep = (index: number, patch: Partial<StepConfig>) => {
-    onChange(steps.map((s, i) => (i === index ? { ...s, ...patch } : s)));
-  };
-
-  const removeStep = (index: number) => {
-    onChange(steps.filter((_, i) => i !== index));
-  };
-
-  const moveStep = (index: number, delta: number) => {
-    const target = index + delta;
-    if (target < 0 || target >= steps.length) return;
-    const next = [...steps];
-    [next[index], next[target]] = [next[target], next[index]];
-    onChange(next);
-  };
-
-  const addStep = (type: StepType) => {
-    onChange([...steps, { ...DEFAULT_STEPS[type] }]);
-  };
-
-  return (
-    <div className="steps-editor">
-      {steps.map((step, i) => (
-        <div key={i} className="step-row">
-          <div className="step-row-header">
-            <span className="step-num">{i + 1}</span>
-            <span className="step-type">{stepLabel(step.type)}</span>
-            <span className="step-actions">
-              <button type="button" className="step-btn" onClick={() => moveStep(i, -1)} disabled={i === 0} title="Выше">↑</button>
-              <button type="button" className="step-btn" onClick={() => moveStep(i, 1)} disabled={i === steps.length - 1} title="Ниже">↓</button>
-              <button type="button" className="step-btn step-btn-danger" onClick={() => removeStep(i)} title="Удалить шаг">×</button>
-            </span>
-          </div>
-          <div className="step-row-body">
-            <StepForm step={step} columns={columns} catalog={catalog} onChange={(patch) => updateStep(i, patch)} />
-          </div>
-        </div>
-      ))}
-
-      <div className="steps-add">
-        <select
-          className="input"
-          value=""
-          onChange={(e) => {
-            if (e.target.value) addStep(e.target.value as StepType);
-          }}
-        >
-          <option value="">+ Добавить шаг...</option>
-          {catalog.step_types.map((t) => (
-            <option key={t.id} value={t.id}>{t.label}</option>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
-}
-
-function StepForm({
+export function StepForm({
   step,
   columns,
   catalog,
@@ -175,8 +104,8 @@ function StepForm({
     case "find_replace":
       return (
         <div className="step-fields-column">
+          <ColumnInput value={step.column || ""} onChange={(v) => onChange({ column: v })} suggestions={columns} placeholder="Колонка" />
           <div className="step-fields">
-            <ColumnInput value={step.column || ""} onChange={(v) => onChange({ column: v })} suggestions={columns} placeholder="Колонка" />
             <input
               className="input"
               value={step.find || ""}
@@ -197,38 +126,59 @@ function StepForm({
           </div>
         </div>
       );
-    case "merge_rows":
+    case "merge_rows": {
+      const mode = step.mode === "values" ? "values" : "condition";
       return (
         <div className="step-fields-column">
-          <div className="step-fields">
-            <ColumnInput value={step.column || ""} onChange={(v) => onChange({ column: v })} suggestions={columns} placeholder="Срез (напр. campaignname)" />
-            <select className="input" value={step.operator || "contains"} onChange={(e) => onChange({ operator: e.target.value })}>
-              {catalog.filter_operators
-                .filter((op) => MERGE_OPERATOR_IDS.includes(op.id))
-                .map((op) => (
-                  <option key={op.id} value={op.id}>{op.label}</option>
-                ))}
-            </select>
-            <input
-              className="input"
-              value={String(step.value ?? "")}
-              onChange={(e) => onChange({ value: e.target.value })}
-              placeholder="Признак (напр. search)"
-            />
-          </div>
-          <div className="step-fields">
-            <input
-              className="input step-grow"
-              value={step.group_name || ""}
-              onChange={(e) => onChange({ group_name: e.target.value })}
-              placeholder="Название объединённой строки (напр. Search-кампании)"
-            />
-          </div>
-          <div>
+          <select
+            className="input"
+            value={mode}
+            onChange={(e) => onChange({ mode: e.target.value as "condition" | "values" })}
+          >
+            <option value="condition">Объединить строки по условию</option>
+            <option value="values">Сгруппировать по значениям среза</option>
+          </select>
+          <ColumnInput
+            value={step.column || ""}
+            onChange={(v) => onChange({ column: v })}
+            suggestions={columns}
+            placeholder="Срез (напр. adnetworktype)"
+          />
+          {mode === "condition" ? (
+            <>
+              <div className="step-fields">
+                <select className="input" value={step.operator || "contains"} onChange={(e) => onChange({ operator: e.target.value })}>
+                  {catalog.filter_operators
+                    .filter((op) => MERGE_OPERATOR_IDS.includes(op.id))
+                    .map((op) => (
+                      <option key={op.id} value={op.id}>{op.label}</option>
+                    ))}
+                </select>
+                <input
+                  className="input"
+                  value={String(step.value ?? "")}
+                  onChange={(e) => onChange({ value: e.target.value })}
+                  placeholder="Признак (напр. search)"
+                />
+              </div>
+              <input
+                className="input"
+                value={step.group_name || ""}
+                onChange={(e) => onChange({ group_name: e.target.value })}
+                placeholder="Название объединённой строки (напр. Search-кампании)"
+              />
+              <div className="field-hint">
+                Совпавшие строки объединятся в одну, несовпавшие останутся как есть.
+              </div>
+            </>
+          ) : (
             <div className="field-hint">
-              Совпавшие строки объединятся в одну: клики, показы и другие числа просуммируются.
-              Ниже можно выбрать другую функцию (среднее, максимум…):
+              Каждое уникальное значение среза станет одной строкой: было 3 кампании
+              Поиска и 2 Сетей — станет две строки, числа просуммируются.
             </div>
+          )}
+          <div>
+            <div className="field-hint">Числа суммируются автоматически — здесь можно выбрать другую функцию:</div>
             <AggregationsEditor
               aggregations={step.aggregations || {}}
               columns={columns}
@@ -238,13 +188,14 @@ function StepForm({
           </div>
         </div>
       );
+    }
     case "columns":
       return (
         <div className="step-fields-column">
           <ChipsInput values={step.columns || []} onChange={(v) => onChange({ columns: v })} suggestions={columns} />
           <div className="field-hint">
             Перечисленные колонки идут первыми, остальные — следом. Проще всего перетащить
-            заголовки прямо в таблице превью — шаг обновится сам.
+            заголовки в итоговой таблице — шаг обновится сам.
           </div>
         </div>
       );
@@ -268,7 +219,7 @@ function MappingEditor({
   return (
     <div className="step-fields-column">
       {entries.map(([from, to], i) => (
-        <div key={i} className="step-fields">
+        <div key={i} className="agg-row agg-row-map">
           <ColumnInput
             value={from}
             onChange={(v) => {
@@ -313,7 +264,7 @@ function MappingEditor({
   );
 }
 
-// Пары «колонка → функция» для группировки
+// Пары «колонка → функция» для группировки и объединения. Компактные строки.
 export function AggregationsEditor({
   aggregations,
   columns,
@@ -330,7 +281,7 @@ export function AggregationsEditor({
   return (
     <div className="step-fields-column">
       {entries.map(([col, agg], i) => (
-        <div key={i} className="step-fields">
+        <div key={i} className="agg-row">
           <ColumnInput
             value={col}
             onChange={(v) => {

@@ -112,13 +112,50 @@ class GroupByTransformation(BaseTransformation):
         return data
 
 
-class MergeRowsTransformation(BaseTransformation):
-    """Объединение строк по признаку: строки, где срез подходит под условие
-    (например, название кампании содержит «search»), схлопываются в одну.
+def merge_group(rows: List[Dict], column: str, group_value: Any, aggregations: Dict[str, str]) -> Dict[str, Any]:
+    """Свернуть группу строк в одну: срез = group_value, числовые колонки
+    суммируются (или функцией из aggregations), разные тексты — пусто."""
+    columns_seen: List[str] = []
+    for row in rows:
+        for key in row.keys():
+            if key not in columns_seen:
+                columns_seen.append(key)
 
-    Значение среза в объединённой строке = group_name; числовые колонки
-    суммируются (или сворачиваются функцией из aggregations), текстовые без
-    заданной агрегации остаются пустыми. Несовпавшие строки не меняются.
+    merged: Dict[str, Any] = {}
+    for col in columns_seen:
+        if col == column:
+            merged[col] = group_value
+            continue
+        values = [row.get(col) for row in rows if row.get(col) is not None]
+        agg_func = aggregations.get(col)
+        if agg_func is None:
+            numeric = [
+                v for v in values
+                if isinstance(v, (int, float)) and not isinstance(v, bool)
+            ]
+            if values and len(numeric) == len(values):
+                agg_func = "sum"
+            else:
+                # разные тексты не угадываем — оставляем пусто
+                merged[col] = ""
+                continue
+        merged[col] = apply_aggregation(agg_func, values)
+    return merged
+
+
+class MergeRowsTransformation(BaseTransformation):
+    """Объединение по признаку (срезу), два режима.
+
+    mode="condition" (по умолчанию): строки, где срез подходит под условие
+    (например, название кампании содержит «search»), схлопываются в одну
+    строку со значением среза group_name. Несовпавшие строки не меняются.
+
+    mode="values": группировка по значениям среза — каждое уникальное
+    значение становится одной строкой (3 кампании Поиска и 2 Сетей ->
+    две строки), порядок = первое вхождение значения.
+
+    В обоих режимах числовые колонки суммируются, aggregations
+    переопределяет функцию, разные тексты без агрегации — пусто.
     """
 
     OPERATORS = ("contains", "startswith", "endswith", "eq")
@@ -126,17 +163,40 @@ class MergeRowsTransformation(BaseTransformation):
     def transform(self, data: Dict[str, List[Dict]], config: Dict[str, Any]) -> Dict[str, List[Dict]]:
         source = config.get("source")
         column = config.get("column")
+        mode = config.get("mode") or "condition"
+        aggregations = config.get("aggregations") or {}
+
+        if mode not in ("condition", "values"):
+            raise TransformationError(f"merge_rows: unknown mode '{mode}'")
+        if not all([source, column]):
+            raise TransformationError("merge_rows requires: source, column")
+        if source not in data:
+            raise TransformationError(f"Source '{source}' not found")
+
+        rows = data[source]
+
+        if mode == "values":
+            # Группировка: значение среза -> его строки (порядок первых вхождений)
+            groups: Dict[Any, List[Dict]] = {}
+            for row in rows:
+                key = row.get(column)
+                key = "" if key is None else key
+                groups.setdefault(key, []).append(row)
+            data[source] = [
+                merge_group(group, column, key, aggregations)
+                for key, group in groups.items()
+            ]
+            return data
+
+        # mode == "condition"
         op = config.get("operator") or "contains"
         value = config.get("value")
         group_name = config.get("group_name")
-        aggregations = config.get("aggregations") or {}
 
-        if not all([source, column, group_name]) or value in (None, ""):
+        if not group_name or value in (None, ""):
             raise TransformationError("merge_rows requires: source, column, value, group_name")
         if op not in self.OPERATORS:
             raise TransformationError(f"merge_rows: unknown operator '{op}'")
-        if source not in data:
-            raise TransformationError(f"Source '{source}' not found")
 
         # Названия кампаний сравниваем без учёта регистра, как в сшивке
         needle = str(value).strip().lower()
@@ -151,36 +211,11 @@ class MergeRowsTransformation(BaseTransformation):
                 return cell.endswith(needle)
             return cell == needle
 
-        rows = data[source]
         matched = [row for row in rows if matches(row)]
         if not matched:
             return data
 
-        columns_seen: List[str] = []
-        for row in matched:
-            for key in row.keys():
-                if key not in columns_seen:
-                    columns_seen.append(key)
-
-        merged: Dict[str, Any] = {}
-        for col in columns_seen:
-            if col == column:
-                merged[col] = group_name
-                continue
-            values = [row.get(col) for row in matched if row.get(col) is not None]
-            agg_func = aggregations.get(col)
-            if agg_func is None:
-                numeric = [
-                    v for v in values
-                    if isinstance(v, (int, float)) and not isinstance(v, bool)
-                ]
-                if values and len(numeric) == len(values):
-                    agg_func = "sum"
-                else:
-                    # разные тексты не угадываем — оставляем пусто
-                    merged[col] = ""
-                    continue
-            merged[col] = apply_aggregation(agg_func, values)
+        merged = merge_group(matched, column, group_name, aggregations)
 
         # Объединённая строка встаёт на место первой совпавшей
         result = []

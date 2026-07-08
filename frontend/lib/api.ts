@@ -44,12 +44,12 @@ export async function apiFetch<T = any>(
       return retryRes.json();
     }
     
-    // Refresh failed. Уводим на /login только со внутренних страниц:
+    // Refresh failed. Со внутренних страниц уводим на главную (вход там попапом);
     // на публичных (лендинг, вход, регистрация, privacy) 401 — штатная ситуация,
     // и жёсткий редирект не давал лендингу отрисоваться.
     const PUBLIC_PATHS = ["/", "/login", "/register", "/privacy"];
     if (typeof window !== "undefined" && !PUBLIC_PATHS.includes(window.location.pathname)) {
-      window.location.href = "/login";
+      window.location.href = "/";
     }
     throw new ApiError(401, "Session expired");
   }

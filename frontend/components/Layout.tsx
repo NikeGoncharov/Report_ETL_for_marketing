@@ -45,7 +45,7 @@ export default function Layout({ children, title }: LayoutProps) {
       })
       .catch(() => {
         if (typeof window !== "undefined") {
-          window.location.href = "/login";
+          window.location.href = "/";
         }
       })
       .finally(() => {
@@ -99,7 +99,8 @@ export default function Layout({ children, title }: LayoutProps) {
     try {
       await authApi.logout();
     } finally {
-      router.push("/login");
+      // На главную (лендинг): вход оттуда открывается попапом
+      window.location.href = "/";
     }
   }
 

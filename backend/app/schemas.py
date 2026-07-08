@@ -56,6 +56,18 @@ class ProjectResponse(BaseModel):
         from_attributes = True
 
 
+class ProjectIntegrationBrief(BaseModel):
+    """Короткая сводка интеграции для карточки клиента в списке."""
+    type: str
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectListItem(ProjectResponse):
+    integrations: List[ProjectIntegrationBrief] = []
+
+
 # ============== Integration Schemas ==============
 
 class IntegrationResponse(BaseModel):
@@ -112,6 +124,8 @@ class StepConfig(BaseModel):
     replace: Optional[str] = None
     # merge_rows: значение среза для объединённой строки
     group_name: Optional[str] = None
+    # merge_rows: режим — по условию (condition) или по значениям среза (values)
+    mode: Optional[Literal["condition", "values"]] = None
 
 
 class DatasetConfig(BaseModel):

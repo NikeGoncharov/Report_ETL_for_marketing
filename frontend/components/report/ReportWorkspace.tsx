@@ -6,13 +6,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Catalog, DatasetConfig, DatasetType, DirectCampaign, MetrikaCounter,
-  PipelineStage, PreviewResult, Report, ReportConfigV2, ReportRun,
+  PipelineStage, PreviewResult, Report, ReportConfigV2, ReportRun, StepConfig,
   defaultDataset, ensureConfigV2,
 } from "../../types/report";
 import { catalogApi, directApi, metrikaApi, reportsApi } from "../../lib/api";
 import PeriodPicker from "./PeriodPicker";
 import DatasetCard, { DatasetFetchState } from "./DatasetCard";
-import DatasetDrawer from "./DatasetDrawer";
+import FetchModal from "./FetchModal";
 import TransformModal from "./TransformModal";
 import StageThreePanel from "./StageThreePanel";
 import ExportPanel from "./ExportPanel";
@@ -79,14 +79,26 @@ export default function ReportWorkspace({
 
   // Превью любой стадии. Для стадий 3-4 запоминаем колонки результата —
   // они служат подсказками для ключей сшивки и группировки.
+  // stepsOverride позволяет workflow трансформации смотреть промежуточные
+  // состояния: датасет отправляется с обрезанной цепочкой шагов.
   const preview = async (
     stage: PipelineStage,
     datasetId?: string,
     refresh?: boolean,
+    stepsOverride?: StepConfig[],
   ): Promise<PreviewResult> => {
+    const effectiveConfig =
+      stepsOverride && datasetId
+        ? {
+            ...config,
+            datasets: config.datasets.map((d) =>
+              d.id === datasetId ? { ...d, steps: stepsOverride } : d,
+            ),
+          }
+        : config;
     const result: PreviewResult = await reportsApi.preview(
       projectId,
-      config as unknown as Record<string, unknown>,
+      effectiveConfig as unknown as Record<string, unknown>,
       { stage, dataset_id: datasetId, refresh },
     );
     if (stage === "fetched" || stage === "transformed") {
@@ -341,9 +353,9 @@ export default function ReportWorkspace({
         </>
       )}
 
-      {/* Панель выгрузки датасета (справа) */}
+      {/* Окно выгрузки датасета (поверх экрана) */}
       {drawer && drawerDataset && (
-        <DatasetDrawer
+        <FetchModal
           dataset={drawerDataset}
           projectId={projectId}
           catalog={catalog}
@@ -361,14 +373,20 @@ export default function ReportWorkspace({
         />
       )}
 
-      {/* Окно трансформации (поверх экрана) */}
+      {/* Окно трансформации: вертикальный workflow шагов */}
       {transformDataset && (
         <TransformModal
           dataset={transformDataset}
           catalog={catalog}
           onChange={(d) => updateDataset(transformDataset.id, d)}
           onClose={() => setTransform(null)}
-          onPreview={(datasetId, stage, refresh) => preview(stage, datasetId, refresh)}
+          onOpenFetch={() => {
+            setTransform(null);
+            setDrawer({ id: transformDataset.id });
+          }}
+          onPreview={(datasetId, stage, refresh, stepsOverride) =>
+            preview(stage, datasetId, refresh, stepsOverride)
+          }
           onFetched={markFetched}
         />
       )}

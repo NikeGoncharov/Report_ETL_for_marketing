@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Layout from "../../../components/Layout";
 import { projectsApi, apiFetch } from "../../../lib/api";
+import { connectIntegrationPopup, oauthErrorMessage } from "../../../lib/oauth";
 
 type Project = {
   id: number;
@@ -83,48 +84,12 @@ export default function IntegrationsPage() {
     setConnecting(type);
 
     try {
-      let endpoint: string;
-      if (type === "google_sheets") {
-        endpoint = `/integrations/google/auth-url?project_id=${projectId}`;
-      } else {
-        endpoint = `/integrations/yandex/auth-url?project_id=${projectId}&integration_type=${type}`;
-      }
-
-      const data = await apiFetch(endpoint);
-      // Открываем авторизацию в popup — пользователь остаётся на странице, в браузере уже залогинен в Яндекс/Google
-      const width = 520;
-      const height = 640;
-      const left = Math.round((window.screen.width - width) / 2);
-      const top = Math.round((window.screen.height - height) / 2);
-      const popup = window.open(
-        data.auth_url,
-        "oauth",
-        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
-      );
-
-      const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        if (event.data?.type !== "oauth-done") return;
-        window.removeEventListener("message", handleMessage);
+      await connectIntegrationPopup(projectId, type, ({ error }) => {
         setConnecting(null);
         loadData();
-        if (event.data.error) {
-          const msg =
-            event.data.error === "token_exchange_failed"
-              ? "Не удалось получить токен. Проверьте Redirect URI в настройках приложения и переменные на сервере."
-              : "Ошибка подключения интеграции";
-          alert(msg);
-        }
-      };
-
-      window.addEventListener("message", handleMessage);
-      const timer = setInterval(() => {
-        if (!popup || popup.closed) {
-          clearInterval(timer);
-          window.removeEventListener("message", handleMessage);
-          setConnecting(null);
-        }
-      }, 300);
+        const msg = oauthErrorMessage(error);
+        if (msg) alert(msg);
+      });
     } catch (err: any) {
       let message = "Ошибка подключения интеграции";
       if (err?.message) {
@@ -204,7 +169,7 @@ export default function IntegrationsPage() {
     <Layout title="Интеграции">
       {/* Breadcrumb */}
       <div className="breadcrumb">
-        <Link href="/dashboard">Проекты</Link>
+        <Link href="/dashboard">Клиенты</Link>
         <span className="breadcrumb-separator">/</span>
         <Link href={`/projects/${id}`}>{project?.name}</Link>
         <span className="breadcrumb-separator">/</span>

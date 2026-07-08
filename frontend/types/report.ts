@@ -22,6 +22,8 @@ export type StepConfig = {
   replace?: string;
   // merge_rows: значение среза для объединённой строки
   group_name?: string;
+  // merge_rows: режим — по условию (condition) или по значениям среза (values)
+  mode?: "condition" | "values";
 };
 
 export type DatasetType = "direct" | "metrika";

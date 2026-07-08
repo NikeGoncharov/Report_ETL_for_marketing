@@ -1571,6 +1571,113 @@ html {
   gap: 8px;
 }
 
+/* Интеграции в карточке клиента */
+.client-ints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.client-int {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--gray-200);
+  border-radius: 999px;
+  background: var(--gray-50);
+  font-size: 0.78rem;
+  color: var(--gray-700);
+}
+
+.client-int-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--int-color, var(--gray-400));
+  flex: none;
+}
+
+.client-int-empty {
+  border-style: dashed;
+  background: transparent;
+  color: var(--gray-400);
+}
+
+.client-int-empty .client-int-dot {
+  display: none;
+}
+
+.client-int-manage {
+  font-size: 0.78rem;
+  color: var(--primary);
+  text-decoration: none;
+  padding: 2px 4px;
+}
+
+.client-int-manage:hover {
+  text-decoration: underline;
+}
+
+/* Форма добавления клиента */
+.client-add-card .input {
+  width: 100%;
+}
+
+.client-add-ints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.client-add-label {
+  font-size: 0.85rem;
+  color: var(--gray-600);
+  margin-right: 2px;
+}
+
+.client-int-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--gray-300);
+  border-radius: 999px;
+  background: var(--white);
+  font-size: 0.82rem;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.client-int-btn:hover:not(:disabled) {
+  border-color: var(--int-color, var(--primary));
+  color: var(--gray-900);
+}
+
+.client-int-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.client-int-btn.connected {
+  border-color: var(--success);
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--gray-800);
+  opacity: 1;
+}
+
+.client-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 /* Stats cards */
 .stats-grid {
   display: grid;
@@ -1906,44 +2013,7 @@ html {
   color: var(--primary);
 }
 
-/* ---- Панель настройки датасета ---- */
-.drawer-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(2px);
-  animation: modal-fade 0.15s ease-out;
-}
-
-.drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(640px, 96vw);
-  background: var(--white);
-  box-shadow: -18px 0 50px rgba(15, 23, 42, 0.18);
-  display: flex;
-  flex-direction: column;
-  animation: drawer-in 0.2s ease-out;
-}
-
-@keyframes drawer-in {
-  from {
-    transform: translateX(28px);
-    opacity: 0;
-  }
-}
-
-.drawer-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--gray-100);
-}
-
+/* ---- Общие элементы модальных окон ---- */
 .drawer-close {
   flex-shrink: 0;
   width: 32px;
@@ -1962,29 +2032,11 @@ html {
   color: var(--gray-700);
 }
 
-.drawer-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  display: grid;
-  gap: 12px;
-  align-content: start;
-}
-
-.drawer-foot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--gray-100);
-  background: var(--gray-50);
-}
-
 .drawer-foot-spacer {
   flex: 1;
 }
 
-/* ---- Окно трансформации: модалка поверх экрана ---- */
+/* ---- Модальные окна выгрузки и трансформации ---- */
 .tmodal-overlay {
   position: fixed;
   inset: 0;
@@ -2045,33 +2097,107 @@ html {
   margin-left: auto;
 }
 
-.tmodal-body {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 400px 1fr;
-  min-height: 0;
+/* Размеры окон: трансформация — почти весь экран, выгрузка — компактнее */
+.tmodal-wide {
+  width: min(1840px, 100%);
+  height: 100%;
 }
 
-.tmodal-steps {
+.tmodal-fetch {
+  width: min(1160px, 100%);
+  height: min(920px, 100%);
+}
+
+.fetch-body {
+  flex: 1;
   overflow-y: auto;
   padding: 16px;
-  border-right: 1px solid var(--gray-100);
+  display: grid;
+  gap: 12px;
+  align-content: start;
 }
 
-.tmodal-preview {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+/* Workflow трансформации: вертикальная лента контейнеров */
+.tflow {
+  flex: 1;
+  overflow-y: auto;
   padding: 16px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
   background: var(--gray-50);
 }
 
-.tmodal-scroll {
+.tstep {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius-lg);
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.tstep-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.tstep-head .step-num {
+  min-width: 26px;
+  height: 26px;
+  font-size: 0.75rem;
+}
+
+.tstep-head-spacer {
   flex: 1;
+}
+
+.tstep-body {
+  display: grid;
+  grid-template-columns: 400px minmax(0, 1fr);
+}
+
+.tstep-form {
+  padding: 12px 14px;
+  border-right: 1px solid var(--gray-100);
+  min-width: 0;
+}
+
+.tstep-note {
+  margin-top: 10px;
+}
+
+.tstep-error {
+  margin-top: 10px;
+  font-size: 0.8rem;
+}
+
+.tstep-table {
+  min-width: 0;
+  padding: 10px 12px;
+  transition: opacity var(--transition);
+}
+
+.tstep-table.is-stale {
+  opacity: 0.45;
+}
+
+.tstep-scroll {
   overflow: auto;
+  max-height: 300px;
   border: 1px solid var(--gray-200);
   border-radius: var(--border-radius);
-  background: var(--white);
+}
+
+.tstep-count {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+}
+
+.tflow-add {
+  max-width: 340px;
 }
 
 .tmodal-table thead th {
@@ -2129,18 +2255,13 @@ html {
     padding: 10px;
   }
 
-  .tmodal-body {
+  .tstep-body {
     grid-template-columns: 1fr;
-    overflow-y: auto;
   }
 
-  .tmodal-steps {
+  .tstep-form {
     border-right: none;
     border-bottom: 1px solid var(--gray-100);
-  }
-
-  .tmodal-preview {
-    min-height: 320px;
   }
 }
 
@@ -2148,13 +2269,6 @@ html {
   .ds-card,
   .ds-add-card {
     width: 100%;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .drawer,
-  .drawer-overlay {
-    animation: none;
   }
 }
 
@@ -2583,6 +2697,23 @@ html {
 .step-fields-column {
   display: grid;
   gap: 8px;
+}
+
+/* Компактные пары «колонка → функция» (агрегации) и «старое → новое» (rename) */
+.agg-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px 30px;
+  gap: 8px;
+  align-items: center;
+}
+
+.agg-row .input {
+  width: 100%;
+  min-width: 0;
+}
+
+.agg-row-map {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) 30px;
 }
 
 .field-arrow {

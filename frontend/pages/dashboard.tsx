@@ -1,20 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import Layout from "../components/Layout";
 import { projectsApi } from "../lib/api";
+import { connectIntegrationPopup, oauthErrorMessage } from "../lib/oauth";
+
+type ProjectIntegration = {
+  type: string;
+};
 
 type Project = {
   id: number;
   name: string;
   created_at: string;
+  integrations?: ProjectIntegration[];
+};
+
+const INTEGRATION_META: Record<string, { label: string; short: string; color: string }> = {
+  yandex_direct: { label: "Яндекс Директ", short: "Директ", color: "#FC3F1D" },
+  yandex_metrika: { label: "Яндекс Метрика", short: "Метрика", color: "#FC3F1D" },
+  google_sheets: { label: "Google Sheets", short: "Google Sheets", color: "#34A853" },
 };
 
 export default function Dashboard() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // Форма добавления клиента: имя + интеграции в одном месте
+  const [formOpen, setFormOpen] = useState(false);
+  const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
+  // Клиент создаётся при первом действии (интеграция или «Готово») и дальше редактируется
+  const [createdId, setCreatedId] = useState<number | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement | null>(null);
 
   async function loadProjects() {
     try {
@@ -27,82 +47,163 @@ export default function Dashboard() {
     }
   }
 
-  async function createProject() {
-    if (!name.trim()) return;
-    setCreating(true);
+  useEffect(() => {
+    loadProjects();
+  }, []);
 
+  function openForm() {
+    setFormOpen(true);
+    setName("");
+    setCreatedId(null);
+    setTimeout(() => nameRef.current?.focus(), 0);
+  }
+
+  function closeForm() {
+    setFormOpen(false);
+    setName("");
+    setCreatedId(null);
+    setConnecting(null);
+  }
+
+  // Создаёт клиента, если ещё не создан; возвращает его id
+  async function ensureProject(): Promise<number | null> {
+    if (createdId !== null) return createdId;
+    if (!name.trim()) {
+      nameRef.current?.focus();
+      return null;
+    }
+    setCreating(true);
     try {
-      await projectsApi.create(name);
-      setName("");
-      loadProjects();
-    } catch (err) {
-      alert("Ошибка создания проекта");
+      const project = await projectsApi.create(name.trim());
+      setCreatedId(project.id);
+      await loadProjects();
+      return project.id;
+    } catch {
+      alert("Ошибка создания клиента");
+      return null;
     } finally {
       setCreating(false);
     }
   }
 
-  async function deleteProject(id: number, projectName: string) {
-    if (!confirm(`Удалить проект "${projectName}"?`)) return;
-
+  async function connectFromForm(type: string) {
+    const projectId = await ensureProject();
+    if (projectId === null) return;
+    setConnecting(type);
     try {
-      await projectsApi.delete(id);
-      loadProjects();
-    } catch (err) {
-      alert("Ошибка удаления проекта");
+      await connectIntegrationPopup(projectId, type, ({ error }) => {
+        setConnecting(null);
+        loadProjects();
+        const msg = oauthErrorMessage(error);
+        if (msg) alert(msg);
+      });
+    } catch {
+      alert("Ошибка подключения интеграции");
+      setConnecting(null);
     }
   }
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
+  // «Готово»: создать при необходимости, подхватить правку имени, закрыть форму
+  async function submitForm() {
+    if (createdId === null) {
+      const projectId = await ensureProject();
+      if (projectId === null) return;
+    } else {
+      const created = projects.find((p) => p.id === createdId);
+      const trimmed = name.trim();
+      if (trimmed && created && created.name !== trimmed) {
+        try {
+          await projectsApi.update(createdId, trimmed);
+          await loadProjects();
+        } catch {
+          alert("Ошибка сохранения названия");
+          return;
+        }
+      }
+    }
+    closeForm();
+  }
+
+  async function deleteProject(id: number, projectName: string) {
+    if (!confirm(`Удалить клиента "${projectName}"?`)) return;
+
+    try {
+      await projectsApi.delete(id);
+      if (id === createdId) closeForm();
+      loadProjects();
+    } catch (err) {
+      alert("Ошибка удаления клиента");
+    }
+  }
+
+  const createdProject = createdId !== null ? projects.find((p) => p.id === createdId) : null;
+  const connectedTypes = new Set((createdProject?.integrations || []).map((i) => i.type));
 
   return (
-    <Layout title="Проекты">
-      {/* Stats */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-card-icon" style={{ background: "var(--primary-light)" }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2">
-              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+    <Layout title="Клиенты">
+      {/* Добавление клиента: имя и интеграции в одной форме */}
+      <div style={{ marginBottom: 24 }}>
+        {!formOpen ? (
+          <button className="btn btn-primary" onClick={openForm}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
+            Добавить клиента
+          </button>
+        ) : (
+          <div className="card client-add-card">
+            <div className="card-body">
+              <input
+                ref={nameRef}
+                className="input"
+                placeholder="Название клиента"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submitForm()}
+              />
+              <div className="client-add-ints">
+                <span className="client-add-label">Интеграции:</span>
+                {Object.entries(INTEGRATION_META).map(([type, meta]) => {
+                  const isConnected = connectedTypes.has(type);
+                  const isConnecting = connecting === type;
+                  return (
+                    <button
+                      key={type}
+                      className={`client-int-btn ${isConnected ? "connected" : ""}`}
+                      style={{ "--int-color": meta.color } as React.CSSProperties}
+                      onClick={() => connectFromForm(type)}
+                      disabled={isConnected || isConnecting || creating}
+                      title={isConnected ? "Подключено" : `Подключить ${meta.label}`}
+                    >
+                      <span className="client-int-dot" />
+                      {meta.label}
+                      {isConnecting ? "…" : isConnected ? " ✓" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="client-add-actions">
+                <button className="btn btn-secondary btn-sm" onClick={closeForm}>
+                  {createdId === null ? "Отмена" : "Закрыть"}
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={submitForm}
+                  disabled={creating || (createdId === null && !name.trim())}
+                >
+                  {creating ? "Создание..." : createdId === null ? "Создать клиента" : "Готово"}
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="stat-card-value">{projects.length}</div>
-          <div className="stat-card-label">Всего проектов</div>
-        </div>
+        )}
       </div>
 
-      {/* Create Project */}
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div className="card-body">
-          <div style={{ display: "flex", gap: 12 }}>
-            <input
-              className="input"
-              placeholder="Название нового проекта"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && createProject()}
-              style={{ flex: 1 }}
-            />
-            <button
-              className="btn btn-primary"
-              onClick={createProject}
-              disabled={creating || !name.trim()}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              {creating ? "Создание..." : "Создать проект"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Projects List */}
+      {/* Clients List */}
       {loading ? (
         <div className="loading">
-          <p>Загрузка проектов...</p>
+          <p>Загрузка клиентов...</p>
         </div>
       ) : projects.length === 0 ? (
         <div className="empty-state">
@@ -111,35 +212,57 @@ export default function Dashboard() {
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
             </svg>
           </div>
-          <h3>Нет проектов</h3>
-          <p>Создайте первый проект, чтобы начать работу с данными</p>
+          <h3>Нет клиентов</h3>
+          <p>Добавьте первого клиента, чтобы начать работу с данными</p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {projects.map((project) => (
-            <div key={project.id} className="project-card">
-              <div className="project-card-info">
-                <h3>{project.name}</h3>
-                <p className="project-card-date">
-                  Создан: {new Date(project.created_at).toLocaleDateString("ru-RU")}
-                </p>
+          {projects.map((project) => {
+            const ints = project.integrations || [];
+            return (
+              <div key={project.id} className="project-card">
+                <div className="project-card-info">
+                  <h3>{project.name}</h3>
+                  <p className="project-card-date">
+                    Создан: {new Date(project.created_at).toLocaleDateString("ru-RU")}
+                  </p>
+                  <div className="client-ints">
+                    {ints.length === 0 && <span className="client-int client-int-empty">Нет интеграций</span>}
+                    {ints.map((integration) => {
+                      const meta = INTEGRATION_META[integration.type];
+                      return (
+                        <span
+                          key={integration.type}
+                          className="client-int"
+                          style={{ "--int-color": meta?.color || "var(--gray-400)" } as React.CSSProperties}
+                        >
+                          <span className="client-int-dot" />
+                          {meta?.short || integration.type}
+                        </span>
+                      );
+                    })}
+                    <Link href={`/projects/${project.id}/integrations`} className="client-int-manage">
+                      Настроить
+                    </Link>
+                  </div>
+                </div>
+                <div className="project-card-actions">
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => router.push(`/projects/${project.id}`)}
+                  >
+                    Открыть
+                  </button>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={() => deleteProject(project.id, project.name)}
+                  >
+                    Удалить
+                  </button>
+                </div>
               </div>
-              <div className="project-card-actions">
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={() => router.push(`/projects/${project.id}`)}
-                >
-                  Открыть
-                </button>
-                <button
-                  className="btn btn-danger btn-sm"
-                  onClick={() => deleteProject(project.id, project.name)}
-                >
-                  Удалить
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </Layout>

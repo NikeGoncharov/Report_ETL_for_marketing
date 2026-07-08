@@ -1,6 +1,6 @@
-// Выплывающая панель выгрузки датасета: параметры (кампании/срезы/показатели
+// Окно выгрузки датасета поверх экрана: параметры (кампании/срезы/показатели
 // или счётчик/метрики) + предварительная выгрузка (stage=fetched).
-// Трансформация живёт отдельно — в модальном окне TransformModal.
+// Трансформация живёт в соседнем окне TransformModal.
 import { useEffect, useState } from "react";
 import {
   Catalog, DatasetConfig, DirectCampaign, MetrikaCounter, MetrikaGoal,
@@ -11,7 +11,7 @@ import { CheckboxGrid } from "./fields";
 import PreviewTable from "./PreviewTable";
 import { formatApiError } from "./format";
 
-export default function DatasetDrawer({
+export default function FetchModal({
   dataset,
   projectId,
   catalog,
@@ -33,19 +33,19 @@ export default function DatasetDrawer({
   fetched: boolean;
   onChange: (dataset: DatasetConfig) => void;
   onClose: () => void;
-  // «К трансформации»: закрыть панель и открыть модалку шагов
+  // «К трансформации»: закрыть это окно и открыть workflow шагов
   onOpenTransform: () => void;
   onPreview: (datasetId: string, stage: PipelineStage, refresh?: boolean) => Promise<PreviewResult>;
   onFetched: (datasetId: string, stage: "fetched" | "transformed", rows: number) => void;
 }) {
   const [preview, setPreview] = useState<PreviewResult | null>(null);
-  // выгрузка сделана в этом открытии панели (для подписи под таблицей)
+  // выгрузка сделана в этом открытии окна (для подписи под таблицей)
   const [fetchedNow, setFetchedNow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [goals, setGoals] = useState<MetrikaGoal[]>([]);
 
-  // Esc закрывает панель, скролл страницы блокируется
+  // Esc закрывает окно, скролл страницы блокируется
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -98,13 +98,13 @@ export default function DatasetDrawer({
 
   return (
     <div
-      className="drawer-overlay"
+      className="tmodal-overlay"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label={`Настройка: ${dataset.label || dataset.id}`}>
-        <div className="drawer-head">
+      <div className="tmodal tmodal-fetch" role="dialog" aria-modal="true" aria-label={`Выгрузка: ${dataset.label || dataset.id}`}>
+        <div className="tmodal-head">
           <span className={`dataset-badge dataset-badge-${dataset.type}`}>
             {isDirect ? "Директ" : "Метрика"}
           </span>
@@ -121,7 +121,7 @@ export default function DatasetDrawer({
           </button>
         </div>
 
-        <div className="drawer-body">
+        <div className="fetch-body">
           {isDirect ? (
             <>
               <div className="param-block">
@@ -234,7 +234,7 @@ export default function DatasetDrawer({
           )}
         </div>
 
-        <div className="drawer-foot">
+        <div className="tmodal-foot">
           <button type="button" className="btn btn-primary" onClick={() => runPreview()} disabled={loading}>
             {loading ? "Выгрузка..." : fetched ? "Выгрузить заново" : "Предварительная выгрузка"}
           </button>
@@ -259,7 +259,7 @@ export default function DatasetDrawer({
             Готово
           </button>
         </div>
-      </aside>
+      </div>
     </div>
   );
 }

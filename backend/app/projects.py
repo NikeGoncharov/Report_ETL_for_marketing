@@ -3,23 +3,25 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import User, Project
-from app.schemas import ProjectCreate, ProjectUpdate, ProjectResponse
+from app.schemas import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListItem
 from app.auth import get_current_user
 
 router = APIRouter(prefix="/projects")
 
 
-@router.get("", response_model=List[ProjectResponse])
+@router.get("", response_model=List[ProjectListItem])
 async def get_projects(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all projects for current user."""
+    """Get all projects for current user with their integrations."""
     result = await db.execute(
         select(Project)
+        .options(selectinload(Project.integrations))
         .where(Project.user_id == current_user.id)
         .order_by(Project.created_at.desc())
     )
