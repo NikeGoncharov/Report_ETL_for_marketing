@@ -425,14 +425,16 @@ html {
   padding: 72px 0;
 }
 
+/* Шапки секций по центру; сетки и карточки под ними остаются как есть */
 .landing-kicker {
-  display: inline-block;
+  display: block;
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--primary);
   margin-bottom: 12px;
+  text-align: center;
 }
 
 .landing-h2 {
@@ -440,12 +442,14 @@ html {
   font-weight: 700;
   letter-spacing: -0.015em;
   margin-bottom: 8px;
+  text-align: center;
 }
 
 .landing-sub {
   color: var(--gray-600);
   max-width: 62ch;
-  margin-bottom: 34px;
+  margin: 0 auto 34px;
+  text-align: center;
 }
 
 .landing-cards-grid {
@@ -768,6 +772,9 @@ html {
   background: var(--white);
   border: 1px solid #e4e9f1;
   border-radius: var(--border-radius-lg);
+  /* На широких экранах блок ограничен по ширине — держим его по центру,
+     как и заголовок секции */
+  margin: 0 auto;
 }
 
 .compare-table {
@@ -1286,6 +1293,7 @@ html {
 
   .faq-list {
     max-width: 1020px;
+    margin: 0 auto;
   }
 
   .faq-item summary {
