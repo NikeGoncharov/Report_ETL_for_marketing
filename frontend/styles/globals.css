@@ -329,6 +329,8 @@ html {
 
 .flow-link {
   position: relative;
+  /* Пробег бегущих точек = ширина линии − размер точки; на широких экранах оба растут */
+  --flow-travel: 42px;
   width: 48px;
   height: 2px;
   background: linear-gradient(90deg, rgba(122, 165, 255, 0.12), rgba(122, 165, 255, 0.55));
@@ -372,7 +374,7 @@ html {
     opacity: 1;
   }
   100% {
-    transform: translateX(42px);
+    transform: translateX(var(--flow-travel, 42px));
     opacity: 0;
   }
 }
@@ -1142,6 +1144,195 @@ html {
 
   .viz-core small br {
     display: none;
+  }
+}
+
+/* ---- Адаптив лендинга вверх: широкие экраны (≥1440px) ----
+   Контейнер и типографика растут, схема пайплайна раздвигается — контент
+   занимает больше ширины, не растягиваясь в одну строку. Только лендинг,
+   кабинет не затрагивается. */
+@media (min-width: 1440px) {
+  .landing-container {
+    max-width: min(1440px, calc(100vw - 160px));
+  }
+
+  /* Герой */
+  .landing-hero {
+    padding: 96px 0 116px;
+  }
+
+  .landing-title {
+    font-size: 4rem;
+  }
+
+  .landing-subtitle {
+    font-size: 1.25rem;
+    max-width: 62ch;
+  }
+
+  .landing-fineprint {
+    font-size: 0.875rem;
+  }
+
+  .flow {
+    margin-top: 68px;
+  }
+
+  .flow-node {
+    width: 272px;
+    padding: 14px 18px;
+    gap: 12px;
+  }
+
+  .flow-node b {
+    font-size: 0.9375rem;
+  }
+
+  .flow-node small {
+    font-size: 0.78rem;
+  }
+
+  .flow-link {
+    --flow-travel: 90px;
+    width: 96px;
+  }
+
+  .flow-core {
+    padding: 22px 30px;
+  }
+
+  .flow-core img {
+    height: 76px;
+  }
+
+  .flow-core-ops {
+    font-size: 0.8125rem;
+  }
+
+  /* Секции: крупнее заголовки, больше воздуха */
+  .landing-section {
+    padding: 92px 0;
+  }
+
+  .landing-h2 {
+    font-size: 2.3rem;
+  }
+
+  .landing-sub {
+    font-size: 1rem;
+    max-width: 66ch;
+    margin-bottom: 40px;
+  }
+
+  /* Возможности и роадмап: 3 колонки крупных карточек (вместо 4+2 у фич) */
+  .landing-cards-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+  }
+
+  .landing-feature-card {
+    padding: 30px;
+  }
+
+  .landing-feature-card h3 {
+    font-size: 1.125rem;
+  }
+
+  .landing-feature-card p {
+    font-size: 0.9375rem;
+  }
+
+  /* Карта подключений: панель выше, ядро крупнее */
+  .sources-viz {
+    height: 540px;
+  }
+
+  .viz-node {
+    padding: 9px 16px;
+  }
+
+  .viz-node b {
+    font-size: 0.875rem;
+  }
+
+  .viz-node small {
+    font-size: 0.7rem;
+  }
+
+  .viz-core {
+    width: 192px;
+    height: 192px;
+  }
+
+  /* Шаги */
+  .how-grid {
+    gap: 32px;
+  }
+
+  .how-step h3 {
+    font-size: 1.0625rem;
+  }
+
+  .how-step p {
+    font-size: 0.9375rem;
+  }
+
+  /* Безопасность: фиксируем 2×2 — auto-fit на широком контейнере давал 3+1 */
+  .security-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 22px;
+  }
+
+  .security-card {
+    padding: 24px 28px;
+  }
+
+  .security-card p {
+    font-size: 0.9375rem;
+  }
+
+  /* Сравнение и FAQ наоборот ограничиваем: строкам на всю ширину
+     контейнера не хватает плотности текста */
+  .compare-scroll {
+    max-width: 1120px;
+  }
+
+  .compare-table td {
+    font-size: 1rem;
+  }
+
+  .roadmap-card {
+    padding: 28px;
+  }
+
+  .roadmap-card p {
+    font-size: 0.9375rem;
+  }
+
+  .faq-list {
+    max-width: 1020px;
+  }
+
+  .faq-item summary {
+    font-size: 1.0625rem;
+    padding: 18px 0;
+  }
+
+  .faq-item p {
+    font-size: 0.9375rem;
+  }
+
+  /* Финальный CTA */
+  .landing-cta-section {
+    padding: 104px 0;
+  }
+
+  .landing-cta-section h2 {
+    font-size: 2.3rem;
+  }
+
+  .landing-cta-section p {
+    font-size: 1.0625rem;
   }
 }
 
