@@ -500,13 +500,17 @@ html {
 
 .sources-viz {
   position: relative;
-  height: 480px;
+  /* Высота = высоте viewBox (730): вертикальные единицы совпадают с px,
+     поэтому кривые попадают в ядро на любой ширине панели */
+  height: 730px;
+  max-width: 880px;
+  margin: 0 auto;
   border-radius: 24px;
   border: 1px solid #1e2735;
   overflow: hidden;
   background:
     radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1.4px) 0 0 / 24px 24px,
-    radial-gradient(560px 300px at 50% 50%, rgba(45, 115, 255, 0.14), transparent 70%),
+    radial-gradient(420px 460px at 50% 57%, rgba(45, 115, 255, 0.14), transparent 70%),
     linear-gradient(180deg, #0e1526 0%, #0b111f 100%);
   box-shadow: 0 24px 60px rgba(14, 21, 38, 0.28);
 }
@@ -544,15 +548,6 @@ html {
   to {
     stroke-dashoffset: -14;
   }
-}
-
-/* Группы нужны только мобильной раскладке; на десктопе узлы позиционируются от панели */
-.viz-group {
-  display: contents;
-}
-
-.viz-group h3 {
-  display: none;
 }
 
 .viz-node {
@@ -597,7 +592,7 @@ html {
 .viz-core {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 56.8%; /* центр ядра на y=415 в системе viewBox 1000×730 */
   transform: translate(-50%, -50%);
   width: 176px;
   height: 176px;
@@ -641,6 +636,7 @@ html {
 .viz-legend {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 20px;
   margin-top: 16px;
   font-size: 0.8125rem;
@@ -671,6 +667,7 @@ html {
   margin-top: 12px;
   font-size: 0.875rem;
   color: #6b7890;
+  text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1086,64 +1083,50 @@ html {
   }
 }
 
-/* Карта подключений: узким экранам абсолютная раскладка тесна —
-   складываемся в группы чипов раньше остального адаптива */
-@media (max-width: 1020px) {
-  .sources-viz {
-    height: auto;
-    padding: 20px;
+/* Карта подключений: вертикальная раскладка живёт на всех ширинах,
+   на узких экранах ступенчато сжимаем чипы и ядро */
+@media (max-width: 480px) {
+  .viz-node {
+    padding: 7px 11px;
+    gap: 7px;
   }
 
-  .viz-svg,
-  .viz-ring {
+  .viz-node b {
+    font-size: 0.75rem;
+  }
+
+  .viz-node small {
+    font-size: 0.6rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .viz-node {
+    padding: 6px 10px;
+  }
+
+  .viz-node b {
+    font-size: 0.72rem;
+  }
+
+  /* Подпись типа не влезает и скрывается: деление остаётся позиционным —
+     сверху источники, снизу выгрузки (цвет точки кодирует бренд, не тип) */
+  .viz-node small {
     display: none;
   }
 
-  .viz-group {
-    display: block;
-  }
-
-  .viz-group + .viz-group {
-    margin-top: 14px;
-  }
-
-  .viz-group h3 {
-    display: block;
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: #5f6c82;
-    margin-bottom: 8px;
-  }
-
-  .viz-node {
-    position: static;
-    transform: none;
-    display: inline-flex;
-    margin: 0 8px 8px 0;
-  }
-
+  /* Ядро 156px: концы кривых (y 341/489) остаются под его краями (337/493) */
   .viz-core {
-    position: static;
-    transform: none;
-    width: auto;
-    height: auto;
-    border-radius: 16px;
-    flex-direction: row;
-    justify-content: flex-start;
-    text-align: left;
-    gap: 12px;
-    padding: 12px 16px;
-    margin: 18px 0;
+    width: 156px;
+    height: 156px;
   }
 
   .viz-core img {
-    height: 28px;
+    height: 34px;
   }
 
-  .viz-core small br {
-    display: none;
+  .viz-core small {
+    font-size: 0.62rem;
   }
 }
 
@@ -1242,11 +1225,8 @@ html {
     font-size: 0.9375rem;
   }
 
-  /* Карта подключений: панель выше, ядро крупнее */
-  .sources-viz {
-    height: 540px;
-  }
-
+  /* Карта подключений: чипы чуть крупнее; высоту панели и размер ядра
+     не трогаем — на них завязана координатная система кривых */
   .viz-node {
     padding: 9px 16px;
   }
@@ -1257,11 +1237,6 @@ html {
 
   .viz-node small {
     font-size: 0.7rem;
-  }
-
-  .viz-core {
-    width: 192px;
-    height: 192px;
   }
 
   /* Шаги */

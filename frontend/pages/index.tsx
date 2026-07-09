@@ -86,8 +86,11 @@ const FEATURES = [
   },
 ];
 
-/* Карта подключений: координаты узлов в системе viewBox 1080×480,
-   HTML-узлы позиционируются теми же координатами в процентах — пути и узлы не расходятся */
+/* Карта подключений (вертикальная): источники сверху, ядро в центре, выгрузки снизу.
+   Координаты узлов — в системе viewBox 1000×730. Высота панели равна высоте viewBox,
+   поэтому вертикальные единицы совпадают с пикселями на любой ширине — кривые всегда
+   попадают в ядро (круг 176px с центром на y=415). HTML-узлы позиционируются теми же
+   координатами в процентах — пути и узлы не расходятся. */
 type VizItem = {
   name: string;
   type: string;
@@ -98,30 +101,35 @@ type VizItem = {
 };
 
 const VIZ_SOURCES: VizItem[] = [
-  { name: "Яндекс Директ", type: "реклама", color: "#FC3F1D", live: true, x: 158, y: 52 },
-  { name: "Яндекс Метрика", type: "аналитика", color: "#FFBA00", live: true, x: 108, y: 128 },
-  { name: "ПромоСтраницы", type: "реклама", color: "#f97316", live: false, x: 88, y: 204 },
-  { name: "Google Ads", type: "реклама", color: "#4285F4", live: false, x: 88, y: 280 },
-  { name: "VK Реклама", type: "реклама", color: "#0077FF", live: false, x: 108, y: 356 },
-  { name: "Google Analytics", type: "аналитика", color: "#F9AB00", live: false, x: 158, y: 430 },
+  { name: "Яндекс Директ", type: "реклама", color: "#FC3F1D", live: true, x: 270, y: 64 },
+  { name: "Яндекс Метрика", type: "аналитика", color: "#FFBA00", live: true, x: 730, y: 102 },
+  { name: "ПромоСтраницы", type: "реклама", color: "#f97316", live: false, x: 240, y: 164 },
+  { name: "Google Ads", type: "реклама", color: "#4285F4", live: false, x: 760, y: 202 },
+  { name: "VK Реклама", type: "реклама", color: "#0077FF", live: false, x: 305, y: 264 },
+  { name: "Google Analytics", type: "аналитика", color: "#F9AB00", live: false, x: 695, y: 302 },
 ];
 
 const VIZ_DESTS: VizItem[] = [
-  { name: "Google Sheets", type: "экспорт", color: "#34A853", live: true, x: 935, y: 160 },
-  { name: "CSV-файл", type: "экспорт", color: "#7c8aa5", live: true, x: 935, y: 320 },
+  { name: "Google Sheets", type: "экспорт", color: "#34A853", live: true, x: 300, y: 640 },
+  { name: "CSV-файл", type: "экспорт", color: "#7c8aa5", live: true, x: 700, y: 665 },
 ];
 
-// Кривые от узла к ядру (слева) и от ядра к назначениям (справа)
-const srcPath = (x: number, y: number) =>
-  `M ${x} ${y} C ${x + 150} ${y}, 405 ${240 + (y - 240) * 0.3}, 462 ${240 + (y - 240) * 0.2}`;
-const dstPath = (x: number, y: number) =>
-  `M 618 ${240 + (y - 240) * 0.2} C 720 ${y}, 810 ${y}, ${x - 70} ${y}`;
+// Кривые: от источника вниз к верху ядра и от низа ядра к назначениям.
+// Концы у ядра сходятся к центру (×0.14 по горизонтали), но не в одну точку.
+const srcPath = (x: number, y: number) => {
+  const endX = 500 + (x - 500) * 0.14;
+  return `M ${x} ${y} C ${x} ${y + 110}, ${endX} 231, ${endX} 341`;
+};
+const dstPath = (x: number, y: number) => {
+  const startX = 500 + (x - 500) * 0.14;
+  return `M ${startX} 489 C ${startX} 559, ${x} ${y - 70}, ${x} ${y}`;
+};
 
 function VizNode({ n }: { n: VizItem }) {
   return (
     <div
       className={`viz-node${n.live ? "" : " plan"}`}
-      style={{ left: `${(n.x / 1080) * 100}%`, top: `${(n.y / 480) * 100}%` }}
+      style={{ left: `${(n.x / 1000) * 100}%`, top: `${(n.y / 730) * 100}%` }}
     >
       <span className="flow-dot" style={{ background: n.color, opacity: n.live ? 1 : 0.55 }} />
       <span>
@@ -384,8 +392,10 @@ export default function LandingPage() {
           <p className="landing-sub">
             Данные стекаются в ядро Report и уходят в вашу таблицу. Стартуем с Яндекса — карта подключений растёт.
           </p>
-          <div className="sources-viz">
-            <svg className="viz-svg" viewBox="0 0 1080 480" preserveAspectRatio="none" aria-hidden="true">
+          {/* Карта декоративна: источники и форматы выгрузки перечислены в тексте
+              секций и FAQ, скрин-ридеру набор абсолютных чипов только мешает */}
+          <div className="sources-viz" aria-hidden="true">
+            <svg className="viz-svg" viewBox="0 0 1000 730" preserveAspectRatio="none">
               {VIZ_SOURCES.map((s) => (
                 <path key={s.name} className={`viz-path ${s.live ? "live" : "plan"}`} d={srcPath(s.x, s.y)} />
               ))}
@@ -394,18 +404,9 @@ export default function LandingPage() {
               ))}
             </svg>
 
-            <div className="viz-group">
-              <h3>Реклама</h3>
-              {VIZ_SOURCES.filter((s) => s.type === "реклама").map((s) => (
-                <VizNode key={s.name} n={s} />
-              ))}
-            </div>
-            <div className="viz-group">
-              <h3>Аналитика</h3>
-              {VIZ_SOURCES.filter((s) => s.type === "аналитика").map((s) => (
-                <VizNode key={s.name} n={s} />
-              ))}
-            </div>
+            {VIZ_SOURCES.map((s) => (
+              <VizNode key={s.name} n={s} />
+            ))}
 
             <div className="viz-core">
               <span className="viz-ring" aria-hidden="true" />
@@ -417,12 +418,9 @@ export default function LandingPage() {
               </small>
             </div>
 
-            <div className="viz-group">
-              <h3>Куда выгружаем</h3>
-              {VIZ_DESTS.map((d) => (
-                <VizNode key={d.name} n={d} />
-              ))}
-            </div>
+            {VIZ_DESTS.map((d) => (
+              <VizNode key={d.name} n={d} />
+            ))}
           </div>
 
           <div className="viz-legend">
