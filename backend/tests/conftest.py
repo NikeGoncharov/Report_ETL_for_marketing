@@ -6,10 +6,11 @@ from datetime import datetime, timedelta
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from app.main import app
-from app.database import Base, get_db
+from app.database import Base, get_db, _apply_sqlite_pragmas
 from app.models import User, Project, Integration, Report
 from app.auth import get_password_hash, create_access_token, create_refresh_token
 
@@ -33,7 +34,11 @@ async def test_engine():
         TEST_DATABASE_URL,
         echo=False,
     )
-    
+    # Те же PRAGMA, что и в проде (foreign_keys=ON, busy_timeout), чтобы тесты
+    # реально проверяли поведение с включёнными внешними ключами. WAL на :memory:
+    # не поддерживается и молча остаётся memory — это ок.
+    event.listen(engine.sync_engine, "connect", _apply_sqlite_pragmas)
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     

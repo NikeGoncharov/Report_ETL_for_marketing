@@ -1,5 +1,6 @@
 """Yandex.Direct API integration."""
 import asyncio
+import logging
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any
 
@@ -7,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models import User, Project, Integration
@@ -196,7 +199,25 @@ async def fetch_direct_stats(
                     continue
             break
 
-    # Fallback: campaigns with Statistics (campaign-level aggregate)
+    # Fallback: campaigns with Statistics (campaign-level aggregate).
+    # ВНИМАНИЕ: это ДРУГОЙ, более бедный срез, чем Reports API — тут нет
+    # Date/Ctr/AvgCpc/Conversions, а деньги приходят в МИКРОденьгах (у campaigns
+    # нет заголовка returnMoneyInMicros=false, поэтому Cost делим на 1e6).
+    # Ключи приводим к тем же lowercase-именам, что и основной путь (campaignid,
+    # campaignname, ...), чтобы merge/шаги по campaignname продолжали работать.
+    # include_vat здесь неприменим: campaigns Statistics не переключает НДС.
+    logger.warning(
+        "Direct Reports API не готов после %d попыток -> фолбэк на campaigns "
+        "Statistics (агрегат, без Date/Ctr/Conversions, НДС как в аккаунте)",
+        max_retries,
+    )
+
+    def _micros_to_rub(value: Any) -> float:
+        try:
+            return round(float(value) / 1_000_000, 2)
+        except (TypeError, ValueError):
+            return 0.0
+
     criteria = {"Ids": campaign_ids} if campaign_ids else {}
     campaigns_result = await call_direct_api(
         "campaigns",
@@ -210,11 +231,11 @@ async def fetch_direct_stats(
     # Statistics, как и DailyBudget, у части кампаний приходит как null
     return [
         {
-            "campaign_id": c["Id"],
-            "campaign_name": c["Name"],
+            "campaignid": c["Id"],
+            "campaignname": c["Name"],
             "impressions": (c.get("Statistics") or {}).get("Impressions", 0),
             "clicks": (c.get("Statistics") or {}).get("Clicks", 0),
-            "cost": (c.get("Statistics") or {}).get("Cost", 0),
+            "cost": _micros_to_rub((c.get("Statistics") or {}).get("Cost", 0)),
         }
         for c in campaigns
     ]

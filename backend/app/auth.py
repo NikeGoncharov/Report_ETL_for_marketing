@@ -100,13 +100,16 @@ async def get_current_user(
         )
     
     user_id = payload.get("sub")
-    if user_id is None:
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        # sub отсутствует или нечисловой (кривой/чужеформатный токен) — это 401, не 500
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
         )
-    
-    result = await db.execute(select(User).where(User.id == int(user_id)))
+
+    result = await db.execute(select(User).where(User.id == user_id_int))
     user = result.scalar_one_or_none()
     
     if user is None:
@@ -238,11 +241,18 @@ async def refresh_tokens(
         )
     
     user_id = payload.get("sub")
-    
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token payload",
+        )
+
     # Verify user still exists
-    result = await db.execute(select(User).where(User.id == int(user_id)))
+    result = await db.execute(select(User).where(User.id == user_id_int))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

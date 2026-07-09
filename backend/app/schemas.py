@@ -1,18 +1,31 @@
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal
 
 
 # ============== User Schemas ==============
+# Единая нормализация email: login/register/allowlist/manage.py должны видеть
+# одно представление, иначе — лок-аут аккаунта и дубли (email-индекс SQLite
+# регистрозависим). EmailStr нормализует только домен; локальную часть — тут.
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
+    @field_validator("email")
+    @classmethod
+    def _normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+    @field_validator("email")
+    @classmethod
+    def _normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
 
 
 class UserResponse(BaseModel):

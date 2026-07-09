@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
 
@@ -37,6 +38,78 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 
 # ============== Helper Functions ==============
+
+
+async def upsert_integration(
+    db: AsyncSession,
+    project_id: int,
+    integration_type: str,
+    access_token: str,
+    refresh_token: Optional[str],
+    expires_in: int,
+    account_info: dict,
+    keep_refresh_if_missing: bool = False,
+) -> None:
+    """Идемпотентно сохранить интеграцию (project_id, type).
+
+    UniqueConstraint(project_id, type) + ловля IntegrityError делают конкурентный
+    check-then-insert безопасным: проигравшая гонку вставка откатывается и
+    обновляет уже созданную строку, вместо дублей и последующего 500.
+
+    keep_refresh_if_missing=True (Google): не затирать refresh_token, если провайдер
+    его не прислал (Google отдаёт refresh_token только при первой авторизации).
+    """
+    expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+
+    def _apply(existing: Integration) -> None:
+        existing.access_token = access_token
+        if not (keep_refresh_if_missing and not refresh_token):
+            existing.refresh_token = refresh_token
+        existing.expires_at = expires_at
+        existing.account_info = account_info
+
+    result = await db.execute(
+        select(Integration).where(
+            Integration.project_id == project_id,
+            Integration.type == integration_type,
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        _apply(existing)
+        await db.commit()
+        return
+
+    db.add(Integration(
+        project_id=project_id,
+        type=integration_type,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=expires_at,
+        account_info=account_info,
+    ))
+    try:
+        await db.commit()
+    except IntegrityError:
+        # IntegrityError здесь двух видов: (1) проигранная гонка uniqueness —
+        # параллельный callback уже вставил строку; (2) FK-ошибка — проект удалён
+        # во время OAuth (foreign_keys=ON). Отличаем по повторному select: строка
+        # есть -> гонка, обновляем; строки нет -> FK, отдаём чистый 404, а не 500.
+        await db.rollback()
+        result = await db.execute(
+            select(Integration).where(
+                Integration.project_id == project_id,
+                Integration.type == integration_type,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Проект не найден — возможно, он был удалён во время авторизации.",
+            )
+        _apply(existing)
+        await db.commit()
 
 # OAuth callbacks have no user session: the provider redirects the browser
 # straight to the backend. The signed state is the only proof that the
@@ -191,33 +264,11 @@ async def yandex_callback(
                 "name": user_data.get("real_name") or user_data.get("login"),
             }
     
-    # Check if integration already exists
-    result = await db.execute(
-        select(Integration)
-        .where(Integration.project_id == project_id, Integration.type == integration_type)
+    await upsert_integration(
+        db, project_id, integration_type,
+        access_token, refresh_token, expires_in, account_info,
     )
-    existing = result.scalar_one_or_none()
-    
-    if existing:
-        # Update existing integration
-        existing.access_token = access_token
-        existing.refresh_token = refresh_token
-        existing.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
-        existing.account_info = account_info
-    else:
-        # Create new integration
-        integration = Integration(
-            project_id=project_id,
-            type=integration_type,
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_at=datetime.utcnow() + timedelta(seconds=expires_in),
-            account_info=account_info,
-        )
-        db.add(integration)
-    
-    await db.commit()
-    
+
     return RedirectResponse(
         url=f"{FRONTEND_URL}/projects/{project_id}/integrations?success=1"
     )
@@ -311,34 +362,12 @@ async def google_callback(
                 "name": user_data.get("name"),
             }
     
-    # Check if integration already exists
-    result = await db.execute(
-        select(Integration)
-        .where(Integration.project_id == project_id, Integration.type == "google_sheets")
+    await upsert_integration(
+        db, project_id, "google_sheets",
+        access_token, refresh_token, expires_in, account_info,
+        keep_refresh_if_missing=True,  # Google отдаёт refresh_token только при первой авторизации
     )
-    existing = result.scalar_one_or_none()
-    
-    if existing:
-        # Update existing integration
-        existing.access_token = access_token
-        if refresh_token:  # Google only returns refresh_token on first auth
-            existing.refresh_token = refresh_token
-        existing.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
-        existing.account_info = account_info
-    else:
-        # Create new integration
-        integration = Integration(
-            project_id=project_id,
-            type="google_sheets",
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_at=datetime.utcnow() + timedelta(seconds=expires_in),
-            account_info=account_info,
-        )
-        db.add(integration)
-    
-    await db.commit()
-    
+
     return RedirectResponse(
         url=f"{FRONTEND_URL}/projects/{project_id}/integrations?success=1"
     )

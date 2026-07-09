@@ -24,6 +24,11 @@ from app.google_sheets import get_sheets_integration, ExportRequest, do_export_t
 
 router = APIRouter()
 
+# #14: id отчётов, для которых прямо сейчас идёт прогон. Один процесс uvicorn ->
+# множества в памяти достаточно, чтобы не пускать второй параллельный /run того же
+# отчёта (иначе двойной экспорт в Sheets и гонка записи в SQLite).
+_running_reports: set[int] = set()
+
 
 def get_date_range(period_config: dict) -> tuple[str, str]:
     """Get date range from period configuration."""
@@ -542,73 +547,84 @@ async def run_report(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Report not found"
         )
-    
-    # Create run record; период резолвим в даты сразу — история хранит факт
-    period_from, period_to = get_date_range((report.config or {}).get("period") or {})
-    run = ReportRun(
-        report_id=report_id,
-        status="running",
-        period_from=period_from,
-        period_to=period_to,
-    )
-    db.add(run)
-    await db.commit()
-    await db.refresh(run)
 
-    try:
-        if report.config.get("version") != 2:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Отчёт в устаревшем формате конфигурации — пересоздайте его в конструкторе"
-            )
-
-        # Run pipeline
-        data_result = await run_pipeline_v2(
-            report.config, project_id, current_user, db, stage="final"
+    # #14: не пускаем второй параллельный прогон этого же отчёта. Проверка и
+    # добавление атомарны (между ними нет await), поэтому лишний лок не нужен.
+    if report_id in _running_reports:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Отчёт уже выполняется. Дождитесь завершения текущего запуска.",
         )
+    _running_reports.add(report_id)
+    try:
+        # Create run record; период резолвим в даты сразу — история хранит факт
+        period_from, period_to = get_date_range((report.config or {}).get("period") or {})
+        run = ReportRun(
+            report_id=report_id,
+            status="running",
+            period_from=period_from,
+            period_to=period_to,
+        )
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
 
-        export_config = report.config.get("export") or {}
-        export_type = export_config.get("type") or "google_sheets"
+        try:
+            if report.config.get("version") != 2:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Отчёт в устаревшем формате конфигурации — пересоздайте его в конструкторе"
+                )
 
-        if export_type == "google_sheets":
-            sheets_integration = await get_sheets_integration(project_id, current_user, db)
-            spreadsheet_id = export_config.get("spreadsheet_id")
-            if export_config.get("create_new"):
-                # Явный режим «новая таблица при каждом запуске»
-                spreadsheet_id = None
-            if spreadsheet_id is not None and isinstance(spreadsheet_id, str) and not spreadsheet_id.strip():
-                spreadsheet_id = None
-            sheet_name = (export_config.get("sheet_name") or report.name or "Report").strip() or "Report"
-            export_request = ExportRequest(
-                spreadsheet_id=spreadsheet_id,
-                sheet_name=sheet_name,
-                title=f"{report.name} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                columns=data_result["columns"],
-                data=data_result["data"],
+            # Run pipeline
+            data_result = await run_pipeline_v2(
+                report.config, project_id, current_user, db, stage="final"
             )
-            export_result = await do_export_to_sheets(sheets_integration, export_request)
-            run.status = "completed"
+
+            export_config = report.config.get("export") or {}
+            export_type = export_config.get("type") or "google_sheets"
+
+            if export_type == "google_sheets":
+                sheets_integration = await get_sheets_integration(project_id, current_user, db)
+                spreadsheet_id = export_config.get("spreadsheet_id")
+                if export_config.get("create_new"):
+                    # Явный режим «новая таблица при каждом запуске»
+                    spreadsheet_id = None
+                if spreadsheet_id is not None and isinstance(spreadsheet_id, str) and not spreadsheet_id.strip():
+                    spreadsheet_id = None
+                sheet_name = (export_config.get("sheet_name") or report.name or "Report").strip() or "Report"
+                export_request = ExportRequest(
+                    spreadsheet_id=spreadsheet_id,
+                    sheet_name=sheet_name,
+                    title=f"{report.name} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    columns=data_result["columns"],
+                    data=data_result["data"],
+                )
+                export_result = await do_export_to_sheets(sheets_integration, export_request)
+                run.status = "completed"
+                run.completed_at = datetime.utcnow()
+                run.result_url = export_result.get("spreadsheet_url") or ""
+            else:
+                run.status = "completed"
+                run.completed_at = datetime.utcnow()
+
+            await db.commit()
+            await db.refresh(run)
+
+        except Exception as e:
+            run.status = "failed"
             run.completed_at = datetime.utcnow()
-            run.result_url = export_result.get("spreadsheet_url") or ""
-        else:
-            run.status = "completed"
-            run.completed_at = datetime.utcnow()
-        
-        await db.commit()
-        await db.refresh(run)
-        
-    except Exception as e:
-        run.status = "failed"
-        run.completed_at = datetime.utcnow()
-        run.error_message = getattr(e, "detail", str(e))
-        if isinstance(run.error_message, list):
-            run.error_message = run.error_message[0] if run.error_message else str(e)
-        elif not isinstance(run.error_message, str):
-            run.error_message = str(e)
-        await db.commit()
-        await db.refresh(run)
-    
-    return run
+            run.error_message = getattr(e, "detail", str(e))
+            if isinstance(run.error_message, list):
+                run.error_message = run.error_message[0] if run.error_message else str(e)
+            elif not isinstance(run.error_message, str):
+                run.error_message = str(e)
+            await db.commit()
+            await db.refresh(run)
+
+        return run
+    finally:
+        _running_reports.discard(report_id)
 
 
 @router.get("/projects/{project_id}/reports/{report_id}/runs", response_model=List[ReportRunResponse])

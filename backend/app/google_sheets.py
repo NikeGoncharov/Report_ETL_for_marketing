@@ -23,6 +23,20 @@ router = APIRouter(prefix="/sheets")
 SHEETS_API_URL = "https://sheets.googleapis.com/v4/spreadsheets"
 DRIVE_API_URL = "https://www.googleapis.com/drive/v3/files"
 
+# Символы, с которых Google Sheets начинает трактовать ячейку как формулу.
+_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+
+def _escape_formula_value(value: str) -> str:
+    """Защита от формульной инъекции. Значения приходят из внешних API (имена
+    кампаний Директа, UTM-метки), а запись идёт с valueInputOption=USER_ENTERED,
+    поэтому ячейка вида '=IMPORTXML(...)' исполнилась бы в таблице владельца и
+    утекла бы данные отчёта. Префикс-апостроф заставляет Sheets показать значение
+    как текст (сам апостроф не отображается)."""
+    if value and value[0] in _FORMULA_TRIGGERS:
+        return "'" + value
+    return value
+
 
 class ExportRequest(BaseModel):
     """Request for exporting data to Google Sheets."""
@@ -326,7 +340,7 @@ async def do_export_to_sheets(integration: Integration, request: ExportRequest) 
                 elif isinstance(value, (int, float)):
                     pass  # Keep as is
                 else:
-                    value = str(value)
+                    value = _escape_formula_value(str(value))
                 row_values.append(value)
             values.append(row_values)
         

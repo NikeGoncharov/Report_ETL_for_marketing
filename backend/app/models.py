@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -32,6 +32,12 @@ class Project(Base):
 
 class Integration(Base):
     __tablename__ = "integrations"
+    # Одна интеграция каждого типа на проект. Без ограничения check-then-insert в
+    # OAuth-callback неатомарен: два параллельных callback создают дубли, и весь
+    # доступ через scalar_one_or_none падает с MultipleResultsFound (HTTP 500).
+    __table_args__ = (
+        UniqueConstraint("project_id", "type", name="uq_integration_project_type"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)

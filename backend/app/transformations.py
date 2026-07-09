@@ -277,7 +277,11 @@ class JoinTransformation(BaseTransformation):
 
         for left_row in left_data:
             key = self._key(left_row.get(left_on, ""))
-            right_rows = right_index.get(key, [])
+            # Пустой ключ (нетегированный трафик, кампания без имени) НЕ матчим:
+            # иначе все строки с пустым ключом декартово склеиваются между собой,
+            # приписывая чужие визиты/доход. Пустые правые строки остаются в
+            # индексе и всплывают только как unmatched в right/outer join.
+            right_rows = right_index.get(key, []) if key != "" else []
 
             if right_rows:
                 used_right_keys.add(key)
@@ -345,31 +349,38 @@ class FilterTransformation(BaseTransformation):
             raise TransformationError(f"Source '{source}' not found")
         
         def matches(row_value):
-            if operator == "eq":
-                return row_value == value
-            elif operator == "ne":
-                return row_value != value
-            elif operator == "gt":
-                return row_value > value
-            elif operator == "lt":
-                return row_value < value
-            elif operator == "gte":
-                return row_value >= value
-            elif operator == "lte":
-                return row_value <= value
-            elif operator == "contains":
-                return str(value) in str(row_value)
-            elif operator == "startswith":
-                return str(row_value).startswith(str(value))
-            elif operator == "endswith":
-                return str(row_value).endswith(str(value))
-            elif operator == "is_null":
-                return row_value is None or row_value == ""
-            elif operator == "not_null":
-                return row_value is not None and row_value != ""
-            else:
-                raise TransformationError(f"Unknown operator: {operator}")
-        
+            # Сравнения gt/lt/gte/lte на None или несравнимых типах (число vs строка)
+            # бросают TypeError. Разреженные данные (пустые ячейки Cost и т.п.) —
+            # штатная ситуация, поэтому такая строка просто не проходит фильтр,
+            # а не роняет весь отчёт в HTTP 400.
+            try:
+                if operator == "eq":
+                    return row_value == value
+                elif operator == "ne":
+                    return row_value != value
+                elif operator == "gt":
+                    return row_value > value
+                elif operator == "lt":
+                    return row_value < value
+                elif operator == "gte":
+                    return row_value >= value
+                elif operator == "lte":
+                    return row_value <= value
+                elif operator == "contains":
+                    return str(value) in str(row_value)
+                elif operator == "startswith":
+                    return str(row_value).startswith(str(value))
+                elif operator == "endswith":
+                    return str(row_value).endswith(str(value))
+                elif operator == "is_null":
+                    return row_value is None or row_value == ""
+                elif operator == "not_null":
+                    return row_value is not None and row_value != ""
+                else:
+                    raise TransformationError(f"Unknown operator: {operator}")
+            except TypeError:
+                return False
+
         result = [row for row in data[source] if matches(row.get(column))]
         data[source] = result
         return data
@@ -392,6 +403,11 @@ _FORMULA_UNARY_OPS = {
     ast.UAdd: operator.pos,
 }
 _FORMULA_MAX_EXPONENT = 100
+# Лимит на РАЗМЕР результата возведения в степень, а не только на показатель:
+# ((10**90)**90)**... держит правый операнд ≤100 на каждом уровне, но база растёт
+# экспоненциально -> гигантский int, блокирующий event loop (CPU/OOM). Оцениваем
+# размер результата как bit_length(base)*exponent и режем заранее (~1200 цифр).
+_FORMULA_MAX_RESULT_BITS = 4096
 
 
 def parse_formula(formula: str) -> ast.Expression:
@@ -436,8 +452,14 @@ def evaluate_formula(tree: ast.Expression, row: Dict[str, Any]) -> float:
         if isinstance(node, ast.BinOp):
             left = _eval(node.left)
             right = _eval(node.right)
-            if isinstance(node.op, ast.Pow) and abs(right) > _FORMULA_MAX_EXPONENT:
-                raise ValueError("exponent too large")
+            if isinstance(node.op, ast.Pow):
+                if abs(right) > _FORMULA_MAX_EXPONENT:
+                    raise ValueError("exponent too large")
+                # Ловим левую вложенность ((base**n)**n)...: оцениваем размер
+                # результата до фактического возведения большого int в степень.
+                if isinstance(left, int) and right > 1:
+                    if left.bit_length() * abs(right) > _FORMULA_MAX_RESULT_BITS:
+                        raise ValueError("result too large")
             return _FORMULA_BINARY_OPS[type(node.op)](left, right)
         raise ValueError("unsupported expression")
 
@@ -559,13 +581,22 @@ class SortTransformation(BaseTransformation):
         
         if source not in data:
             raise TransformationError(f"Source '{source}' not found")
-        
-        result = sorted(
-            data[source],
-            key=lambda x: x.get(column, ""),
-            reverse=descending
-        )
-        
+
+        # Типо-устойчивый ключ: колонка может смешивать None (после left-join),
+        # числа и строки. Прямое сравнение бросило бы TypeError и роняло отчёт.
+        # Группы: None -> числа -> строки; внутри группы сортировка однородна.
+        def sort_key(row):
+            v = row.get(column, None)
+            if v is None:
+                return (0, 0.0, "")
+            if isinstance(v, bool):
+                return (1, float(v), "")
+            if isinstance(v, (int, float)):
+                return (1, float(v), "")
+            return (2, 0.0, str(v))
+
+        result = sorted(data[source], key=sort_key, reverse=descending)
+
         data[source] = result
         return data
 

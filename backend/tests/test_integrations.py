@@ -9,7 +9,7 @@ from httpx import AsyncClient, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models import Integration, Project
+from app.models import Integration, Project, User
 from app.integrations import sign_oauth_state, verify_oauth_state
 
 
@@ -630,10 +630,15 @@ class TestIntegrationSecurity:
     ):
         """Should not access integrations of other user's project."""
         from app.auth import get_password_hash
-        
-        # Create another user and their project with integration
-        other_user = MagicMock(id=999)
-        other_project = Project(name="Other's Project", user_id=999)
+
+        # Create another REAL user and their project (user_id должен ссылаться на
+        # существующего юзера — при foreign_keys=ON фейковый id 999 отклоняется).
+        other_user = User(email="other@example.com", password_hash=get_password_hash("pw"))
+        db_session.add(other_user)
+        await db_session.commit()
+        await db_session.refresh(other_user)
+
+        other_project = Project(name="Other's Project", user_id=other_user.id)
         db_session.add(other_project)
         await db_session.commit()
         await db_session.refresh(other_project)
