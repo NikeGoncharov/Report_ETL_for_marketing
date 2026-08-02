@@ -12,8 +12,8 @@
 |---|---|
 | Что копируется | `~/report/data/data.db` |
 | Куда | `~/backups/report/data-YYYYmmdd-HHMMSSZ.db` (время UTC) |
-| Когда | ежедневно в 03:30, `report-backup.timer` |
-| Проверка | ежедневно в 12:00, `report-backup-check.timer` |
+| Когда | ежедневно в 03:30 (сейчас — `crontab -l`, см. «Установка») |
+| Проверка | ежедневно в 12:00 |
 | Хранение | 30 дней, но не меньше 7 последних копий |
 | Инструмент | `backend/scripts/backup_db.py` (только стандартная библиотека) |
 
@@ -67,7 +67,7 @@ foreign_keys` настраивается для каждого соединен�
 ## Проверить руками
 
 ```bash
-ssh homeserver 'systemctl list-timers report-backup*'
+ssh homeserver 'crontab -l'
 ```
 
 ```bash
@@ -78,10 +78,12 @@ ssh homeserver 'python3 ~/report/backend/scripts/backup_db.py --dest ~/backups/r
 ssh homeserver 'cat ~/backups/report/status.json; ls -lh ~/backups/report/'
 ```
 
-Если что-то ругалось ночью:
+Если что-то ругалось ночью (при cron вывод уходит в системную почту, которой на
+сервере нет, поэтому единственный след — `status.json` выше; после перехода на
+таймеры добавится `systemctl status`):
 
 ```bash
-ssh homeserver 'systemctl status report-backup.service report-backup-check.service --no-pager -l'
+ssh homeserver 'journalctl -t CRON --since "-2 days" --no-pager | tail -20'
 ```
 
 ## Восстановление
@@ -147,17 +149,26 @@ ssh homeserver 'cd ~/report && docker compose ps'
 Если рабочей базы не было вовсе (восстановление на чистую машину), скрипт так и
 скажет: «прежней базы на месте не было — откатывать нечего».
 
-## Установка (один раз)
+## Установка
+
+Каталог `~/backups/report` (права `0700`) создан, расписание стоит в **crontab
+пользователя** — `crontab -l`. Крон выбран потому, что установка systemd-юнитов
+требует `sudo` с паролем, а он недоступен из неинтерактивной сессии.
+
+### Перейти на systemd-таймеры (рекомендуется)
+
+Таймеры лучше крона в двух отношениях: провал виден в `systemctl --failed`, и
+`Persistent=true` сам догоняет пропущенный запуск после того, как машину
+включили (крон пропущенное просто теряет — поэтому в crontab добавлена строка
+`@reboot`, приблизительный аналог).
 
 ```bash
-ssh homeserver 'mkdir -p ~/backups/report && chmod 700 ~/backups/report'
+ssh -t homeserver 'sudo cp ~/report/deploy/homeserver/report-backup*.service ~/report/deploy/homeserver/report-backup*.timer /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now report-backup.timer report-backup-check.timer && crontab -r && systemctl list-timers report-backup*'
 ```
 
-```bash
-ssh homeserver 'sudo cp ~/report/deploy/homeserver/report-backup*.service ~/report/deploy/homeserver/report-backup*.timer /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now report-backup.timer report-backup-check.timer'
-```
+`crontab -r` в конце обязателен — иначе копии будут сниматься дважды.
 
-Каталог нужно создать **до** включения таймеров: unit'ы запускаются с
+Каталог должен существовать **до** включения таймеров: unit'ы запускаются с
 `ProtectSystem=strict` и списком `ReadWritePaths`, а несуществующий путь в этом
 списке роняет запуск с невнятной ошибкой монтирования.
 
