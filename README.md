@@ -91,21 +91,27 @@ npm run dev
 
 ## Деплой на сервер
 
-См. файлы в папке `deploy/`:
+Актуальная раскладка — Docker за Cloudflare Tunnel + Caddy: **`deploy/homeserver/README.md`**.
 
 ```bash
-# На сервере
-sudo bash deploy/setup.sh
+cd ~/report && git pull --ff-only && docker compose up -d --build
 ```
 
-Или вручную:
+Файлы `deploy/setup.sh`, `deploy/nginx.conf`, `deploy/*.service` — раскладка
+арендованной ВМ (nginx + certbot + systemd), с которой прод уехал. Оставлены как
+справка по установке без Docker.
 
-1. Создайте пользователя `report`
-2. Установите Python 3.11+, Node.js 18+, nginx
-3. Клонируйте репозиторий в `/home/report/Report`
-4. Настройте systemd-сервисы из `deploy/`
-5. Настройте nginx из `deploy/nginx.conf`
-6. Получите SSL сертификат: `certbot --nginx -d your-domain.ru`
+## Резервные копии
+
+Ранбук (расписание, проверка, восстановление): **`deploy/homeserver/BACKUP.md`**.
+
+```bash
+python3 backend/scripts/backup_db.py --db ~/report/data/data.db --dest ~/backups/report backup
+```
+
+Копия снимается онлайн, на работающей базе, и проверяется до того, как получит
+финальное имя. Копировать `data.db` вручную нельзя: база в режиме WAL, и `cp`
+молча теряет свежие транзакции.
 
 ## Ограничение регистрации
 

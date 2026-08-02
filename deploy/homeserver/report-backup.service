@@ -1,0 +1,40 @@
+# Ежедневная резервная копия базы Report.
+# Пути и пользователь — под домашний сервер (репозиторий в /home/admin101/report).
+# Ставится в /etc/systemd/system/ вместе с report-backup.timer — см. BACKUP.md.
+[Unit]
+Description=Report: резервная копия базы
+Documentation=file:/home/admin101/report/deploy/homeserver/BACKUP.md
+# Копия снимается онлайн и контейнер не требуется, но при загрузке машины
+# разумно дождаться docker, чтобы не копировать базу в момент миграций alembic.
+After=docker.service
+
+[Service]
+Type=oneshot
+User=admin101
+Group=admin101
+
+# Снять копию, проверить её и удалить устаревшие. Ненулевой код -> unit failed,
+# видно в `systemctl status report-backup` и `systemctl --failed`.
+# Коды: 0 — всё чисто; 1 — копии нет; 2 — копия снята и годна, но есть
+# предупреждения (текст в status.json и в журнале), их надо прочитать.
+ExecStart=/usr/bin/python3 /home/admin101/report/backend/scripts/backup_db.py \
+    --db /home/admin101/report/data/data.db \
+    --dest /home/admin101/backups/report \
+    backup
+
+# База может быть занята записью; busy_timeout внутри скрипта 30 с, здесь — потолок.
+TimeoutStartSec=600
+
+NoNewPrivileges=true
+PrivateTmp=true
+# Вся файловая система только для чтения, кроме двух каталогов ниже.
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# data — потому что соединение с базой в режиме WAL обновляет data.db-shm даже
+# при чтении; backups — собственно для копий.
+ReadWritePaths=/home/admin101/report/data /home/admin101/backups/report
+
+# Секции [Install] нет намеренно: сервис запускает таймер. Будь она здесь,
+# `systemctl enable report-backup` повесил бы копию ещё и на каждую загрузку.

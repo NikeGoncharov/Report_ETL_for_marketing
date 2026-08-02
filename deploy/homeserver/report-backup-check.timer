@@ -1,0 +1,13 @@
+[Unit]
+Description=Report: ежедневная проверка резервных копий
+
+[Timer]
+# Днём, через несколько часов после ночного бэкапа: порог 48 ч, поэтому один
+# пропущенный запуск тревоги не вызывает, а два подряд — уже да.
+OnCalendar=*-*-* 12:00:00
+Persistent=true
+RandomizedDelaySec=600
+Unit=report-backup-check.service
+
+[Install]
+WantedBy=timers.target

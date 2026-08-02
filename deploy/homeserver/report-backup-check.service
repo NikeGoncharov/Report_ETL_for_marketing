@@ -1,0 +1,33 @@
+# Независимый сторож: убеждается, что свежая копия существует и читается.
+# Нужен отдельно от report-backup.service, потому что тот не может сообщить о
+# собственном молчании — сломавшийся или отключённый таймер просто перестаёт
+# запускаться, и без этой проверки отсутствие копий заметно только при аварии.
+[Unit]
+Description=Report: проверка свежести резервных копий
+Documentation=file:/home/admin101/report/deploy/homeserver/BACKUP.md
+# После долгого простоя (домашний сервер выключали на выходные) systemd
+# догоняет ОБА пропущенных запуска сразу. Без этой строки сторож успевал
+# посмотреть на позавчерашнюю копию раньше, чем бэкап клал свежую, и падал
+# ложно — а красный unit при здоровых бэкапах учит не смотреть на unit'ы.
+After=report-backup.service
+
+[Service]
+Type=oneshot
+User=admin101
+Group=admin101
+
+ExecStart=/usr/bin/python3 /home/admin101/report/backend/scripts/backup_db.py \
+    --dest /home/admin101/backups/report \
+    check --max-age-hours 48
+
+TimeoutStartSec=120
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# Проверка открывает копию только на чтение — записи не нужны нигде.
+
+# Секции [Install] нет намеренно — сервис запускает таймер (см. report-backup.service).

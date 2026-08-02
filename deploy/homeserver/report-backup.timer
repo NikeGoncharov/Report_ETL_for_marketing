@@ -1,0 +1,13 @@
+[Unit]
+Description=Report: ежедневная резервная копия базы
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+# Домашний сервер может быть выключен ночью — догнать пропущенный запуск,
+# иначе выключенная на выходные машина осталась бы без копий за эти дни.
+Persistent=true
+RandomizedDelaySec=300
+Unit=report-backup.service
+
+[Install]
+WantedBy=timers.target

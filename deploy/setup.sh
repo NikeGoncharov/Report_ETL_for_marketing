@@ -1,6 +1,10 @@
 #!/bin/bash
 # Report Server Setup Script
 # Run as root: sudo bash setup.sh
+#
+# ВНИМАНИЕ: это раскладка АРЕНДОВАННОЙ ВМ (nginx + certbot + systemd), с которой
+# прод уехал 04.07.2026. Актуальный деплой — Docker за Cloudflare Tunnel:
+# deploy/homeserver/README.md. Скрипт оставлен как справка по «голой» установке.
 
 set -e
 
@@ -133,13 +137,25 @@ ln -sf /etc/nginx/sites-available/report /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
-# 9. Setup backup cron job
-echo "Setting up backup cron job..."
+# 9. Setup backups
+# Прежний крон здесь делал `cp data.db ...` — это НЕБЕЗОПАСНО: база работает в
+# режиме WAL, и копия одного основного файла молча теряет уже зафиксированные
+# транзакции. Плюс `find -mtime +30 -delete` при простое сервиса вычищал каталог
+# до нуля. Копии снимает и проверяет backend/scripts/backup_db.py.
+echo "Setting up backups..."
+# Каталог создаём ЗДЕСЬ и сразу с нужным владельцем. Скрипт создал бы его сам,
+# но выставил бы 0700 от root (setup.sh идёт под sudo), и крон под $APP_USER
+# потом каждую ночь падал бы на PermissionError, а `check` рапортовал бы
+# «ни одной копии», потому что glob по нечитаемому каталогу молча пуст.
+mkdir -p "$APP_HOME/backups/report"
+chown -R $APP_USER:$APP_USER "$APP_HOME/backups"
+chmod 700 "$APP_HOME/backups/report"
+
 cat > /etc/cron.d/report-backup << EOF
-# Backup Report database daily at 3am
-0 3 * * * $APP_USER cp $APP_HOME/data/data.db $APP_HOME/backups/data_\$(date +\%Y\%m\%d).db
-# Keep only last 30 backups
-0 4 * * * $APP_USER find $APP_HOME/backups -name "data_*.db" -mtime +30 -delete
+# Ежедневная проверенная копия базы + ежедневная проверка свежести копий.
+# Схема с systemd-таймерами и полный ранбук: deploy/homeserver/BACKUP.md
+30 3 * * * $APP_USER /usr/bin/python3 $APP_DIR/backend/scripts/backup_db.py --db $APP_HOME/data/data.db --dest $APP_HOME/backups/report backup
+0 12 * * * $APP_USER /usr/bin/python3 $APP_DIR/backend/scripts/backup_db.py --dest $APP_HOME/backups/report check
 EOF
 
 echo ""
