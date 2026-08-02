@@ -165,12 +165,16 @@ export const reportsApi = {
       method: "POST",
       body: JSON.stringify({ config, ...options }),
     }),
+  // Прогон уходит в фон: ответ приходит сразу со статусом running, результат
+  // забирается опросом runStatus (см. lib/runPolling.ts)
   run: (projectId: number, reportId: number) =>
     apiFetch(`/projects/${projectId}/reports/${reportId}/run`, {
       method: "POST",
     }),
   runs: (projectId: number, reportId: number) =>
     apiFetch(`/projects/${projectId}/reports/${reportId}/runs`),
+  runStatus: (projectId: number, reportId: number, runId: number) =>
+    apiFetch(`/projects/${projectId}/reports/${reportId}/runs/${runId}`),
 };
 
 export const catalogApi = {

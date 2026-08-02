@@ -157,8 +157,11 @@ ALLOWED_REGISTRATION_EMAILS=user1@company.com,user2@company.com
 - `GET /projects/{id}/reports` — список отчётов
 - `POST /projects/{id}/reports` — создать отчёт
 - `POST /projects/{id}/reports/preview` — превью данных
-- `POST /projects/{id}/reports/{reportId}/run` — запустить отчёт
+- `POST /projects/{id}/reports/{reportId}/run` — поставить прогон в работу (202, статус `running`);
+  выгрузка идёт фоновой задачей, потому что она регулярно длится дольше, чем живёт
+  HTTP-соединение через Cloudflare Tunnel (~100 с)
 - `GET /projects/{id}/reports/{reportId}/runs` — история запусков
+- `GET /projects/{id}/reports/{reportId}/runs/{runId}` — статус одного прогона (его опрашивает фронт)
 
 ## Лицензия
 

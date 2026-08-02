@@ -8,9 +8,10 @@ import { useRouter } from "next/router";
 import {
   Catalog, DatasetConfig, DatasetType, DirectCampaign, MetrikaCounter,
   PipelineStage, PreviewResult, Report, ReportConfigV2, ReportRun, StepConfig,
-  defaultDataset, ensureConfigV2,
+  defaultDataset, ensureConfigV2, isRunActive,
 } from "../../types/report";
 import { catalogApi, directApi, metrikaApi, reportsApi } from "../../lib/api";
+import { pollRunUntilDone } from "../../lib/runPolling";
 import PeriodPicker from "./PeriodPicker";
 import DatasetCard, { DatasetFetchState } from "./DatasetCard";
 import FetchModal from "./FetchModal";
@@ -38,7 +39,12 @@ export default function ReportWorkspace({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [running, setRunning] = useState(false);
-  const [runMessage, setRunMessage] = useState<string | null>(null);
+  // Тон выбираем явно: «не смогли узнать статус» — это не провал выгрузки.
+  // url — ссылка на готовую таблицу: автооткрытие вкладки после фонового прогона
+  // браузер блокирует (нет жеста пользователя), поэтому показываем ссылку.
+  const [runNotice, setRunNotice] = useState<
+    { text: string; tone: "success" | "warning" | "danger"; url?: string | null } | null
+  >(null);
   // Состояние выгрузки датасетов в этой сессии: id -> {stage, rows}
   const [fetchStates, setFetchStates] = useState<Record<string, DatasetFetchState>>({});
   // Открытая панель выгрузки (справа) и окно трансформации (поверх экрана)
@@ -46,6 +52,8 @@ export default function ReportWorkspace({
   const [transform, setTransform] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const dirty = useRef(false);
+  // Опрос статуса прогона переживает размонтирование компонента — гасим его явно
+  const alive = useRef(true);
   const router = useRouter();
 
   // Несохранённые правки конструктора: предупреждаем и при закрытии вкладки,
@@ -105,10 +113,70 @@ export default function ReportWorkspace({
   }, [router]);
 
   useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  // Ждём фоновый прогон и показываем его исход. Возвращает управление сразу,
+  // как только прогон закончился, отменён (уход со страницы) или сорвался опрос.
+  const trackRun = async (started: ReportRun) => {
+    setRuns((prev) => [started, ...prev.filter((r) => r.id !== started.id)]);
+    let finished: ReportRun | null;
+    try {
+      finished = await pollRunUntilDone(projectId, report.id, started.id, {
+        cancelled: () => !alive.current,
+      });
+    } catch (e) {
+      // Сорвался ОПРОС, а не выгрузка: прогон идёт на сервере и допишет таблицу.
+      // Красная «Ошибка выгрузки» здесь врала бы пользователю.
+      if (alive.current) {
+        setRunNotice({
+          text:
+            `Не удалось отследить выгрузку: ${formatApiError(e)}. ` +
+            "Прогон продолжается на сервере — обновите страницу позже.",
+          tone: "warning",
+        });
+      }
+      return;
+    }
+    if (!finished || !alive.current) return;
+    if (finished.status === "completed") {
+      setRunNotice({
+        text: "Выгрузка завершена успешно.",
+        tone: "success",
+        url: finished.result_url || null,
+      });
+    } else {
+      setRunNotice({
+        text: `Ошибка выгрузки: ${finished.error_message || "неизвестная ошибка"}`,
+        tone: "danger",
+      });
+    }
+    const updatedRuns = await reportsApi.runs(projectId, report.id).catch(() => null);
+    if (updatedRuns && alive.current) setRuns(updatedRuns);
+  };
+
+  useEffect(() => {
     catalogApi.get().then(setCatalog).catch(() => setCatalog(null));
     directApi.campaigns(projectId).then((d) => setCampaigns(d || [])).catch(() => setCampaigns([]));
     metrikaApi.counters(projectId).then((d) => setCounters(d || [])).catch(() => setCounters([]));
-    reportsApi.runs(projectId, report.id).then((d) => setRuns(d || [])).catch(() => setRuns([]));
+    reportsApi
+      .runs(projectId, report.id)
+      .then((d) => {
+        const history: ReportRun[] = d || [];
+        setRuns(history);
+        // Прогон переживает перезагрузку страницы: если он ещё идёт, подхватываем
+        const active = history.find(isRunActive);
+        if (!active) return;
+        setRunning(true);
+        setRunNotice({ text: "Выгрузка уже идёт — ждём результат…", tone: "success" });
+        trackRun(active).finally(() => {
+          if (alive.current) setRunning(false);
+        });
+      })
+      .catch(() => setRuns([]));
   }, [projectId, report.id]);
 
   const updateConfig = (next: ReportConfigV2) => {
@@ -173,27 +241,29 @@ export default function ReportWorkspace({
 
   const run = async () => {
     setRunning(true);
-    setRunMessage(null);
+    setRunNotice(null);
     try {
       if (dirty.current || name !== report.name) {
         const ok = await save();
         if (!ok) return;
       }
-      const result: ReportRun = await reportsApi.run(projectId, report.id);
-      if (result.status === "completed") {
-        if (result.result_url) {
-          window.open(result.result_url, "_blank");
-        }
-        setRunMessage("Выгрузка завершена успешно.");
-      } else {
-        setRunMessage(`Ошибка выгрузки: ${result.error_message || "неизвестная ошибка"}`);
-      }
-      const updatedRuns = await reportsApi.runs(projectId, report.id).catch(() => null);
-      if (updatedRuns) setRuns(updatedRuns);
+      // Бэкенд ставит прогон в работу и отвечает сразу; дальше только ждём
+      const started: ReportRun = await reportsApi.run(projectId, report.id);
+      setRunNotice({
+        text:
+          "Выгрузка запущена. Можно не ждать на этой странице — прогон идёт на сервере, " +
+          "результат появится в истории запусков.",
+        tone: "success",
+      });
+      // trackRun сам различает «прогон упал» и «сорвался опрос»
+      await trackRun(started);
     } catch (e) {
-      setRunMessage(`Ошибка выгрузки: ${formatApiError(e)}`);
+      // Сюда попадает только отказ самого запуска (409, 400, сеть)
+      if (alive.current) {
+        setRunNotice({ text: `Ошибка выгрузки: ${formatApiError(e)}`, tone: "danger" });
+      }
     } finally {
-      setRunning(false);
+      if (alive.current) setRunning(false);
     }
   };
 
@@ -255,6 +325,11 @@ export default function ReportWorkspace({
   }
 
   const anyFetched = config.datasets.some((d) => fetchStates[d.id]);
+  // Этапы 3-4 ведут пользователя по новому отчёту, но fetchStates живёт только
+  // в этой сессии: после перезагрузки страницы он пуст. Для уже запускавшегося
+  // отчёта прятать сшивку, выгрузку, историю и идущий прогон нельзя — иначе
+  // подхват фонового прогона не показывает вообще ничего.
+  const stagesVisible = anyFetched || runs.length > 0;
   const drawerDataset = drawer ? config.datasets.find((d) => d.id === drawer.id) : undefined;
   const transformDataset = transform ? config.datasets.find((d) => d.id === transform) : undefined;
 
@@ -353,7 +428,7 @@ export default function ReportWorkspace({
       )}
 
       {/* Итог появляется после первой выгрузки: сшивка/группировка и экспорт */}
-      {anyFetched && (
+      {stagesVisible && (
         <>
           <section className="card stage-card">
             <div className="card-header stage-header">
@@ -392,9 +467,17 @@ export default function ReportWorkspace({
               </div>
             </div>
             <div className="card-body">
-              {runMessage && (
-                <div className={`alert ${runMessage.startsWith("Ошибка") ? "alert-danger" : "alert-success"}`}>
-                  {runMessage}
+              {runNotice && (
+                <div className={`alert alert-${runNotice.tone}`}>
+                  {runNotice.text}
+                  {runNotice.url && (
+                    <>
+                      {" "}
+                      <a href={runNotice.url} target="_blank" rel="noreferrer">
+                        Открыть таблицу ↗
+                      </a>
+                    </>
+                  )}
                 </div>
               )}
               <ExportPanel

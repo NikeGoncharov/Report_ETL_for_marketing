@@ -1,12 +1,13 @@
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Layout from "../../components/Layout";
 import RunReportModal, { RunRange } from "../../components/report/RunReportModal";
 import { projectsApi, reportsApi, integrationsApi, apiFetch } from "../../lib/api";
+import { pollRunUntilDone } from "../../lib/runPolling";
 import { connectIntegrationPopup, oauthErrorMessage } from "../../lib/oauth";
 import { INTEGRATION_META, INTEGRATION_TYPES, INTEGRATION_HINTS } from "../../lib/integrations";
-import { PeriodConfig } from "../../types/report";
+import { PeriodConfig, ReportRun, isRunActive } from "../../types/report";
 
 type Project = {
   id: number;
@@ -21,23 +22,12 @@ type Integration = {
   created_at: string;
 };
 
-type ReportRunInfo = {
-  id: number;
-  status: string;
-  started_at: string;
-  completed_at?: string | null;
-  error_message?: string | null;
-  result_url?: string | null;
-  period_from?: string | null;
-  period_to?: string | null;
-};
-
 type ReportItem = {
   id: number;
   name: string;
   config: { version?: number; period?: PeriodConfig } & Record<string, unknown>;
   created_at: string;
-  last_run?: ReportRunInfo | null;
+  last_run?: ReportRun | null;
 };
 
 function accountLabel(info: Record<string, unknown> | null): string | null {
@@ -68,9 +58,24 @@ export default function ProjectPage() {
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
-  const [runningId, setRunningId] = useState<number | null>(null);
+  // Прогоны идут фоном на сервере, поэтому одновременно их может быть несколько
+  const [runningIds, setRunningIds] = useState<number[]>([]);
   // отчёт, для которого открыт попап «Обновить выгрузку»
   const [runModalId, setRunModalId] = useState<number | null>(null);
+  // Опрос статуса прогона переживает уход со страницы — гасим его явно
+  const alive = useRef(true);
+  // Отчёты, за прогоном которых уже следим (чтобы не завести второй опрос)
+  const watching = useRef<Set<number>>(new Set());
+
+  async function fetchReports(): Promise<ReportItem[] | null> {
+    try {
+      const items: ReportItem[] = await apiFetch(`/projects/${id}/reports`);
+      setReports(items);
+      return items;
+    } catch {
+      return null;
+    }
+  }
 
   async function loadProject() {
     if (!id) return;
@@ -83,15 +88,24 @@ export default function ProjectPage() {
         setIntegrations(await integrationsApi.list(projectId));
       } catch {}
 
-      try {
-        setReports(await apiFetch(`/projects/${id}/reports`));
-      } catch {}
+      const items = await fetchReports();
+      // Прогон переживает перезагрузку страницы: незавершённые подхватываем
+      for (const item of items || []) {
+        if (isRunActive(item.last_run)) void watchRun(item.id, item.last_run!.id);
+      }
     } catch {
       router.push("/dashboard");
     } finally {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     loadProject();
@@ -139,24 +153,56 @@ export default function ProjectPage() {
     await runReport(report);
   }
 
-  async function runReport(report: ReportItem) {
-    setRunningId(report.id);
+  // Ждать фоновый прогон и подставить его исход в строку отчёта
+  async function watchRun(reportId: number, runId: number) {
+    if (watching.current.has(reportId)) return;
+    watching.current.add(reportId);
+    setRunningIds((ids) => (ids.includes(reportId) ? ids : [...ids, reportId]));
     try {
-      const run = await reportsApi.run(projectId, report.id);
-      setReports((rs) => rs.map((r) => (r.id === report.id ? { ...r, last_run: run } : r)));
+      const finished = await pollRunUntilDone(projectId, reportId, runId, {
+        cancelled: () => !alive.current,
+      });
+      if (!finished || !alive.current) return;
+      setReports((rs) => rs.map((r) => (r.id === reportId ? { ...r, last_run: finished } : r)));
     } catch {
-      // сеть/непредвиденная ошибка — история подтянет failed-запуск
-      loadProject();
+      // Опрос сорвался — состояние возьмём из свежего списка отчётов.
+      // Именно fetchReports, а не loadProject: тот заводит опрос заново, и на
+      // устойчивом сбое сети это стало бы бесконечным циклом.
+      if (alive.current) await fetchReports();
     } finally {
-      setRunningId(null);
+      watching.current.delete(reportId);
+      if (alive.current) setRunningIds((ids) => ids.filter((rid) => rid !== reportId));
     }
   }
 
-  function runLine(report: ReportItem) {
-    if (runningId === report.id) {
-      return <span className="report-run-note">Выгружается — это может занять до минуты…</span>;
+  async function runReport(report: ReportItem) {
+    setRunningIds((ids) => (ids.includes(report.id) ? ids : [...ids, report.id]));
+    let started: ReportRun;
+    try {
+      // Ответ приходит сразу: прогон только поставлен в работу
+      started = await reportsApi.run(projectId, report.id);
+      setReports((rs) => rs.map((r) => (r.id === report.id ? { ...r, last_run: started } : r)));
+    } catch {
+      // сеть/непредвиденная ошибка — история подтянет failed-запуск
+      setRunningIds((ids) => ids.filter((rid) => rid !== report.id));
+      loadProject();
+      return;
     }
+    await watchRun(report.id, started.id);
+  }
+
+  function runLine(report: ReportItem) {
     const run = report.last_run;
+    // isRunActive обязателен вдобавок к runningIds: если опрос сорвался, id из
+    // runningIds уходит, а прогон продолжается — без этой проверки он отрисуется
+    // как «предыдущая выгрузка» с датой старта, то есть как успешно законченный.
+    if (runningIds.includes(report.id) || isRunActive(run)) {
+      return (
+        <span className="report-run-note">
+          Выгрузка идёт на сервере — можно закрыть страницу, результат появится здесь.
+        </span>
+      );
+    }
     if (!run) {
       return <span className="report-run-note">Ещё не выгружался</span>;
     }
@@ -299,6 +345,8 @@ export default function ProjectPage() {
             <div className="report-rows">
               {reports.map((report) => {
                 const isV2 = report.config?.version === 2;
+                // Запуск закрыт, пока прогон идёт: бэкенд всё равно ответит 409
+                const busy = runningIds.includes(report.id) || isRunActive(report.last_run);
                 return (
                   <div key={report.id} className="report-row">
                     <div className="report-row-info">
@@ -309,10 +357,10 @@ export default function ProjectPage() {
                       <button
                         className="btn btn-primary btn-sm"
                         onClick={() => setRunModalId(report.id)}
-                        disabled={runningId !== null || !isV2}
+                        disabled={busy || !isV2}
                         title={isV2 ? "Задать даты и повторить выгрузку" : "Отчёт в устаревшем формате — откройте настройки"}
                       >
-                        {runningId === report.id ? "Выгружаем…" : "Обновить выгрузку"}
+                        {busy ? "Выгружаем…" : "Обновить выгрузку"}
                       </button>
                       <Link href={`/projects/${id}/reports/${report.id}`} className="btn btn-secondary btn-sm">
                         Настройки

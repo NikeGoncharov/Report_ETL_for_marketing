@@ -26,11 +26,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Initialize database and scheduler on startup."""
     await init_db()
-    
+
+    # Прогоны отчётов выполняются фоновыми задачами в памяти процесса: всё, что
+    # осталось в статусе running от прошлого запуска, уже никем не считается.
+    from app.reports import mark_interrupted_runs
+    await mark_interrupted_runs()
+
     # Start scheduler
     from app.scheduler import start_scheduler
     start_scheduler()
-    
+
     yield
     
     # Stop scheduler on shutdown

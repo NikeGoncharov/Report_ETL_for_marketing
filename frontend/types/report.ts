@@ -105,7 +105,15 @@ export type ReportRun = {
   completed_at?: string | null;
   error_message?: string | null;
   result_url?: string | null;
+  // Фактический период выгрузки (пресет резолвится в даты на момент запуска)
+  period_from?: string | null;
+  period_to?: string | null;
 };
+
+// Прогон идёт фоном на бэкенде: пока статус один из этих, результата ещё нет
+export function isRunActive(run: { status: string } | null | undefined): boolean {
+  return run?.status === "running" || run?.status === "pending";
+}
 
 export type Report = {
   id: number;

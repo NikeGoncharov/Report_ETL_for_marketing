@@ -2,6 +2,7 @@
 import asyncio
 import hashlib
 import json
+import logging
 import time
 from datetime import datetime, timedelta, date
 from typing import List, Optional, Dict, Any
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import get_db, async_session_maker
 from app.models import User, Project, Integration, Report, ReportRun
 from app.schemas import (
     ReportCreate, ReportUpdate, ReportResponse, ReportListItem,
@@ -25,10 +26,16 @@ from app.google_sheets import get_sheets_integration, ExportRequest, do_export_t
 
 router = APIRouter()
 
+logger = logging.getLogger(__name__)
+
 # #14: id отчётов, для которых прямо сейчас идёт прогон. Один процесс uvicorn ->
 # множества в памяти достаточно, чтобы не пускать второй параллельный /run того же
 # отчёта (иначе двойной экспорт в Sheets и гонка записи в SQLite).
 _running_reports: set[int] = set()
+
+# Живые фоновые задачи прогонов. asyncio держит задачу только слабой ссылкой:
+# без этого множества сборщик мусора может убить выгрузку на середине.
+_run_tasks: set[asyncio.Task] = set()
 
 
 def get_date_range(period_config: dict) -> tuple[str, str]:
@@ -530,23 +537,187 @@ async def preview_report(
     )
 
 
-@router.post("/projects/{project_id}/reports/{report_id}/run", response_model=ReportRunResponse)
+def _error_text(exc: BaseException) -> str:
+    """Человекочитаемый текст ошибки прогона (detail у HTTPException или str)."""
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, list):
+        detail = detail[0] if detail else None
+    if detail is not None and not isinstance(detail, str):
+        detail = str(detail)
+    return detail or str(exc) or exc.__class__.__name__
+
+
+async def _finalize_run_failed(run_id: int, message: str) -> None:
+    """Пометить прогон упавшим, обязательно в ОТДЕЛЬНОЙ сессии.
+
+    Сессия, в которой случилась ошибка, может быть непригодна (оборванная
+    транзакция), а прогон, застрявший в статусе running, навсегда блокирует
+    отчёт для повторного запуска и заставляет фронт ждать вечно.
+    """
+    try:
+        async with async_session_maker() as db:
+            run = await db.get(ReportRun, run_id)
+            if run is None:
+                return
+            run.status = "failed"
+            run.completed_at = datetime.utcnow()
+            run.error_message = message[:2000]
+            await db.commit()
+    except Exception:
+        logger.exception("Не удалось записать ошибку прогона %s", run_id)
+
+
+async def _run_and_export(
+    run: ReportRun,
+    report: Report,
+    project_id: int,
+    user: User,
+    db: AsyncSession,
+) -> None:
+    """Пайплайн -> экспорт -> отметка об успехе. Ошибки поднимает наверх."""
+    if (report.config or {}).get("version") != 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Отчёт в устаревшем формате конфигурации — пересоздайте его в конструкторе",
+        )
+
+    data_result = await run_pipeline_v2(report.config, project_id, user, db, stage="final")
+
+    export_config = report.config.get("export") or {}
+    export_type = export_config.get("type") or "google_sheets"
+
+    # Экспорт чистит лист перед записью, поэтому пустой результат СТИРАЕТ
+    # клиентскую таблицу. Пустота почти всегда означает проблему (опечатка
+    # в ключе сшивки, нет данных за период, слишком строгий фильтр), а не
+    # намерение обнулить отчёт — не экспортируем и говорим об этом явно.
+    if not data_result["data"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Пайплайн вернул 0 строк — экспорт отменён, чтобы не стереть "
+                "данные в таблице. Проверьте период, фильтры и ключи сшивки."
+            ),
+        )
+
+    if export_type == "google_sheets":
+        sheets_integration = await get_sheets_integration(project_id, user, db)
+        spreadsheet_id = export_config.get("spreadsheet_id")
+        if export_config.get("create_new"):
+            # Явный режим «новая таблица при каждом запуске»
+            spreadsheet_id = None
+        if spreadsheet_id is not None and isinstance(spreadsheet_id, str) and not spreadsheet_id.strip():
+            spreadsheet_id = None
+        sheet_name = (export_config.get("sheet_name") or report.name or "Report").strip() or "Report"
+        export_request = ExportRequest(
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=sheet_name,
+            title=f"{report.name} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            columns=data_result["columns"],
+            data=data_result["data"],
+        )
+        export_result = await do_export_to_sheets(sheets_integration, export_request)
+        run.result_url = export_result.get("spreadsheet_url") or ""
+
+    run.status = "completed"
+    run.completed_at = datetime.utcnow()
+
+
+async def _execute_report_run(
+    run_id: int, report_id: int, project_id: int, user_id: int
+) -> None:
+    """Фоновая задача прогона.
+
+    Своя сессия БД: сессия HTTP-запроса закрывается сразу после ответа 202.
+    Освобождение отчёта в finally обязательно — иначе повторный запуск станет
+    невозможен до перезапуска процесса.
+    """
+    try:
+        try:
+            async with async_session_maker() as db:
+                run = await db.get(ReportRun, run_id)
+                if run is None:
+                    logger.error("Прогон %s исчез до начала выполнения", run_id)
+                    return
+                user = await db.get(User, user_id)
+                if user is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Пользователь не найден",
+                    )
+                report = await db.get(Report, report_id)
+                if report is None or report.project_id != project_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Report not found",
+                    )
+                await _run_and_export(run, report, project_id, user, db)
+                await db.commit()
+                logger.info("Прогон %s отчёта %s завершён", run_id, report_id)
+        except asyncio.CancelledError:
+            # Остановка сервиса на середине выгрузки: пробуем отметить, а если
+            # loop уже закрывается — прогон подберёт mark_interrupted_runs.
+            await _finalize_run_failed(
+                run_id, "Прогон прерван остановкой сервиса — запустите выгрузку заново."
+            )
+            raise
+        except Exception as e:
+            logger.warning("Прогон %s отчёта %s упал: %s", run_id, report_id, e)
+            await _finalize_run_failed(run_id, _error_text(e))
+    finally:
+        _running_reports.discard(report_id)
+
+
+async def mark_interrupted_runs() -> int:
+    """Отметить на старте прогоны, оставшиеся от прошлого процесса.
+
+    Фоновые задачи живут в памяти процесса: рестарт контейнера убивает их, а
+    строки остаются в статусе running навсегда — фронт ждёт результата, которого
+    уже никто не считает.
+    """
+    async with async_session_maker() as db:
+        result = await db.execute(
+            select(ReportRun).where(ReportRun.status.in_(("running", "pending")))
+        )
+        runs = list(result.scalars())
+        for run in runs:
+            run.status = "failed"
+            run.completed_at = datetime.utcnow()
+            run.error_message = (
+                "Прогон прерван перезапуском сервиса — запустите выгрузку заново."
+            )
+        if runs:
+            await db.commit()
+            logger.warning("Прогонов помечено прерванными при старте: %d", len(runs))
+        return len(runs)
+
+
+@router.post(
+    "/projects/{project_id}/reports/{report_id}/run",
+    response_model=ReportRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def run_report(
     project_id: int,
     report_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Run a report and export to Google Sheets."""
+    """Поставить прогон отчёта в работу и сразу вернуть запись о нём.
+
+    Выгрузка Директа и Метрики плюс запись в Google Sheets регулярно длится
+    дольше, чем живёт HTTP-соединение через Cloudflare Tunnel (~100 с): раньше
+    пользователь гарантированно получал 524, хотя прогон втихую доходил до
+    конца. Теперь ответ 202 отдаётся сразу, а результат фронт забирает из
+    GET /projects/{project_id}/reports/{report_id}/runs/{run_id}.
+    """
     await verify_project_access(project_id, current_user, db)
-    
-    # Get report
+
     result = await db.execute(
         select(Report)
         .where(Report.id == report_id, Report.project_id == project_id)
     )
     report = result.scalar_one_or_none()
-    
+
     if not report:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -561,8 +732,10 @@ async def run_report(
             detail="Отчёт уже выполняется. Дождитесь завершения текущего запуска.",
         )
     _running_reports.add(report_id)
+
+    spawned = False
     try:
-        # Create run record; период резолвим в даты сразу — история хранит факт
+        # Период резолвим в даты сразу — история хранит факт, а не пресет
         period_from, period_to = get_date_range((report.config or {}).get("period") or {})
         run = ReportRun(
             report_id=report_id,
@@ -574,75 +747,17 @@ async def run_report(
         await db.commit()
         await db.refresh(run)
 
-        try:
-            if report.config.get("version") != 2:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Отчёт в устаревшем формате конфигурации — пересоздайте его в конструкторе"
-                )
-
-            # Run pipeline
-            data_result = await run_pipeline_v2(
-                report.config, project_id, current_user, db, stage="final"
-            )
-
-            export_config = report.config.get("export") or {}
-            export_type = export_config.get("type") or "google_sheets"
-
-            # Экспорт чистит лист перед записью, поэтому пустой результат СТИРАЕТ
-            # клиентскую таблицу. Пустота почти всегда означает проблему (опечатка
-            # в ключе сшивки, нет данных за период, слишком строгий фильтр), а не
-            # намерение обнулить отчёт — не экспортируем и говорим об этом явно.
-            if not data_result["data"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "Пайплайн вернул 0 строк — экспорт отменён, чтобы не стереть "
-                        "данные в таблице. Проверьте период, фильтры и ключи сшивки."
-                    ),
-                )
-
-            if export_type == "google_sheets":
-                sheets_integration = await get_sheets_integration(project_id, current_user, db)
-                spreadsheet_id = export_config.get("spreadsheet_id")
-                if export_config.get("create_new"):
-                    # Явный режим «новая таблица при каждом запуске»
-                    spreadsheet_id = None
-                if spreadsheet_id is not None and isinstance(spreadsheet_id, str) and not spreadsheet_id.strip():
-                    spreadsheet_id = None
-                sheet_name = (export_config.get("sheet_name") or report.name or "Report").strip() or "Report"
-                export_request = ExportRequest(
-                    spreadsheet_id=spreadsheet_id,
-                    sheet_name=sheet_name,
-                    title=f"{report.name} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                    columns=data_result["columns"],
-                    data=data_result["data"],
-                )
-                export_result = await do_export_to_sheets(sheets_integration, export_request)
-                run.status = "completed"
-                run.completed_at = datetime.utcnow()
-                run.result_url = export_result.get("spreadsheet_url") or ""
-            else:
-                run.status = "completed"
-                run.completed_at = datetime.utcnow()
-
-            await db.commit()
-            await db.refresh(run)
-
-        except Exception as e:
-            run.status = "failed"
-            run.completed_at = datetime.utcnow()
-            run.error_message = getattr(e, "detail", str(e))
-            if isinstance(run.error_message, list):
-                run.error_message = run.error_message[0] if run.error_message else str(e)
-            elif not isinstance(run.error_message, str):
-                run.error_message = str(e)
-            await db.commit()
-            await db.refresh(run)
-
+        task = asyncio.create_task(
+            _execute_report_run(run.id, report_id, project_id, current_user.id)
+        )
+        _run_tasks.add(task)
+        task.add_done_callback(_run_tasks.discard)
+        spawned = True
         return run
     finally:
-        _running_reports.discard(report_id)
+        # Задача снимает пометку сама; освобождаем её только если не запустились
+        if not spawned:
+            _running_reports.discard(report_id)
 
 
 @router.get("/projects/{project_id}/reports/{report_id}/runs", response_model=List[ReportRunResponse])
@@ -674,3 +789,37 @@ async def get_report_runs(
     runs = result.scalars().all()
 
     return runs
+
+
+@router.get(
+    "/projects/{project_id}/reports/{report_id}/runs/{run_id}",
+    response_model=ReportRunResponse,
+)
+async def get_report_run(
+    project_id: int,
+    report_id: int,
+    run_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Статус одного прогона — фронт опрашивает его, пока идёт фоновая выгрузка."""
+    await verify_project_access(project_id, current_user, db)
+
+    result = await db.execute(
+        select(ReportRun)
+        .join(Report, ReportRun.report_id == Report.id)
+        .where(
+            ReportRun.id == run_id,
+            ReportRun.report_id == report_id,
+            Report.project_id == project_id,
+        )
+    )
+    run = result.scalar_one_or_none()
+
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Run not found"
+        )
+
+    return run
