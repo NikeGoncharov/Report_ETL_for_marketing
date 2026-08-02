@@ -11,10 +11,15 @@ from app.transformations import (
     FilterTransformation,
     SortTransformation,
     CalculateTransformation,
+    TransformationError,
 )
 from app.google_sheets import _escape_formula_value
 from app.schemas import UserCreate, UserLogin
-from app.integrations import upsert_integration
+from app.integrations import (
+    upsert_integration,
+    build_oauth_state,
+    parse_oauth_state,
+)
 
 
 # ---------- #5: join не склеивает по пустому ключу ----------
@@ -57,6 +62,161 @@ class TestJoinEmptyKeys:
         result = JoinTransformation().transform(data, config)["L"]
         # только "x"<->"x"; пустые ключи не матчатся
         assert len(result) == 1 and result[0]["k"] == "x"
+
+
+# ---------- H1: составной ключ сшивки (кампания + дата) ----------
+
+class TestCompositeJoinKey:
+    def test_single_key_on_daily_data_inflates(self):
+        """Фиксирует ПРИЧИНУ бага: по одному ключу дневные данные множатся."""
+        data = {
+            "L": [
+                {"date": "2026-08-01", "campaignname": "Brand", "cost": 10},
+                {"date": "2026-08-02", "campaignname": "Brand", "cost": 20},
+            ],
+            "R": [
+                {"date": "2026-08-01", "utmcampaign": "brand", "visits": 5},
+                {"date": "2026-08-02", "utmcampaign": "brand", "visits": 7},
+            ],
+        }
+        config = {"left": "L", "right": "R", "left_on": "campaignname",
+                  "right_on": "utmcampaign", "how": "left", "output": "L"}
+        result = JoinTransformation().transform(data, config)["L"]
+        assert len(result) == 4  # декартово произведение 2×2
+
+    def test_composite_key_matches_day_to_day(self):
+        data = {
+            "L": [
+                {"date": "2026-08-01", "campaignname": "Brand", "cost": 10},
+                {"date": "2026-08-02", "campaignname": "Brand", "cost": 20},
+            ],
+            "R": [
+                {"date": "2026-08-01", "utmcampaign": "brand", "visits": 5},
+                {"date": "2026-08-02", "utmcampaign": "brand", "visits": 7},
+            ],
+        }
+        config = {
+            "left": "L", "right": "R",
+            "left_on": ["campaignname", "date"],
+            "right_on": ["utmcampaign", "date"],
+            "how": "left", "output": "L",
+        }
+        result = JoinTransformation().transform(data, config)["L"]
+        assert len(result) == 2
+        assert sum(r["cost"] for r in result) == 30      # не 60
+        assert sum(r["visits"] for r in result) == 12    # не 24
+        # день к своему дню, а не вперемешку
+        by_date = {r["date"]: r for r in result}
+        assert by_date["2026-08-01"]["visits"] == 5
+        assert by_date["2026-08-02"]["visits"] == 7
+
+    def test_symmetrically_empty_pair_does_not_narrow_key(self):
+        """Ревью-регресс: ["", "date"] / ["", "date"] раньше схлопывалось в
+        ["date"]/["date"] и возвращало декартов взрыв. Теперь пустая пара просто
+        не учитывается, а оставшаяся пара работает как есть."""
+        data = {
+            "L": [
+                {"date": "2026-08-01", "campaignname": "A", "cost": 10},
+                {"date": "2026-08-01", "campaignname": "B", "cost": 20},
+            ],
+            "R": [
+                {"date": "2026-08-01", "utmcampaign": "a", "visits": 1},
+                {"date": "2026-08-01", "utmcampaign": "b", "visits": 2},
+            ],
+        }
+        config = {
+            "left": "L", "right": "R",
+            "left_on": ["campaignname", "date"],
+            "right_on": ["utmcampaign", "date"],
+            "how": "left", "output": "L",
+        }
+        result = JoinTransformation().transform(data, config)["L"]
+        assert len(result) == 2                       # не 4
+        assert sum(r["cost"] for r in result) == 30   # не 60
+
+    def test_half_filled_pair_raises_instead_of_narrowing(self):
+        data = {"L": [{"a": 1, "d": "x"}], "R": [{"b": 2, "d": "x"}]}
+        config = {"left": "L", "right": "R",
+                  "left_on": ["", "d"], "right_on": ["b", "d"],
+                  "how": "left", "output": "L"}
+        with pytest.raises(TransformationError) as exc:
+            JoinTransformation().transform(data, config)
+        assert "паре ключей" in str(exc.value)
+
+    def test_missing_key_column_raises_not_silently_empty(self):
+        """Опечатка/отсутствующая колонка раньше давала пустой результат,
+        который затирал клиентскую таблицу. Теперь — понятная ошибка."""
+        data = {
+            "L": [{"campaignname": "A", "cost": 10}],   # нет колонки date
+            "R": [{"utmcampaign": "a", "date": "2026-08-01", "visits": 1}],
+        }
+        config = {"left": "L", "right": "R",
+                  "left_on": ["campaignname", "date"],
+                  "right_on": ["utmcampaign", "date"],
+                  "how": "inner", "output": "L"}
+        with pytest.raises(TransformationError) as exc:
+            JoinTransformation().transform(data, config)
+        assert "date" in str(exc.value)
+
+    def test_unmatched_right_row_keeps_colliding_column(self):
+        """Одноимённая колонка правого датасета не затирается ключом, а
+        сохраняется как right_<name> — как в ветке сматченных строк."""
+        data = {
+            "L": [{"campaignname": "Brand", "cost": 10}],
+            "R": [{"utmcampaign": "Other", "campaignname": "RightOwn", "visits": 3}],
+        }
+        config = {"left": "L", "right": "R", "left_on": "campaignname",
+                  "right_on": "utmcampaign", "how": "outer", "output": "L"}
+        result = JoinTransformation().transform(data, config)["L"]
+        unmatched = [r for r in result if r.get("visits") == 3][0]
+        assert unmatched["campaignname"] == "Other"          # ключ
+        assert unmatched["right_campaignname"] == "RightOwn"  # исходное не потеряно
+
+    def test_mismatched_key_count_raises(self):
+        data = {"L": [{"a": 1}], "R": [{"b": 2}]}
+        config = {"left": "L", "right": "R", "left_on": ["a", "x"],
+                  "right_on": ["b"], "how": "left", "output": "L"}
+        with pytest.raises(TransformationError):
+            JoinTransformation().transform(data, config)
+
+    def test_unmatched_right_rows_carry_left_key_name(self):
+        """medium-находка: в right/outer ключ должен лежать в ЛЕВОЙ колонке,
+        иначе последующая группировка теряет несматченные строки."""
+        data = {
+            "L": [{"campaignname": "Brand", "cost": 10}],
+            "R": [{"utmcampaign": "Other", "visits": 3}],
+        }
+        config = {"left": "L", "right": "R", "left_on": "campaignname",
+                  "right_on": "utmcampaign", "how": "outer", "output": "L"}
+        result = JoinTransformation().transform(data, config)["L"]
+        unmatched = [r for r in result if r.get("visits") == 3]
+        assert len(unmatched) == 1
+        assert unmatched[0]["campaignname"] == "Other"   # ключ под левым именем
+        assert "utmcampaign" not in unmatched[0]
+
+
+# ---------- H2: лимиты пользовательского regex ----------
+
+class TestRegexLimits:
+    def test_overlong_pattern_rejected(self):
+        from app.transformations import ExtractTransformation
+        data = {"S": [{"c": "x"}]}
+        config = {"source": "S", "column": "c", "pattern": "a" * 500,
+                  "output_column": "out"}
+        with pytest.raises(TransformationError):
+            ExtractTransformation().transform(data, config)
+
+    def test_input_value_is_truncated_for_regex(self):
+        """Длина входа ограничена — экспоненциальный бэктрекинг не разгоняется."""
+        from app.transformations import ExtractTransformation
+        data = {"S": [{"c": "y" * 5000}]}
+        config = {"source": "S", "column": "c", "pattern": r"(\d+)",
+                  "output_column": "out"}
+        start = time.monotonic()
+        result = ExtractTransformation().transform(data, config)["S"]
+        assert time.monotonic() - start < 2.0
+        # совпадения нет -> вернулось усечённое значение, а не исходные 5000
+        assert len(result[0]["out"]) <= 512
 
 
 # ---------- #16: filter на None/несравнимых типах не роняет отчёт ----------
@@ -147,6 +307,38 @@ class TestEmailNormalization:
 
     def test_userlogin_lowercases_email(self):
         assert UserLogin(email="USER@Corp.com", password="x").email == "user@corp.com"
+
+
+# ---------- H3/H4: OAuth state привязан к пользователю и одноразов ----------
+
+class TestOAuthStateBinding:
+    def test_state_carries_initiator_and_roundtrips(self):
+        state = build_oauth_state(user_id=7, project_id=42, integration_type="yandex_direct")
+        user_id, project_id, itype = parse_oauth_state(state, ("yandex_direct", "yandex_metrika"))
+        assert (user_id, project_id, itype) == (7, 42, "yandex_direct")
+
+    def test_state_is_single_use(self):
+        # Повторное предъявление (state из логов/истории браузера) отклоняется
+        state = build_oauth_state(user_id=7, project_id=42, integration_type="google_sheets")
+        parse_oauth_state(state, ("google_sheets",))
+        with pytest.raises(HTTPException) as exc:
+            parse_oauth_state(state, ("google_sheets",))
+        assert exc.value.status_code == 400
+
+    def test_wrong_integration_type_rejected(self):
+        state = build_oauth_state(user_id=7, project_id=42, integration_type="google_sheets")
+        with pytest.raises(HTTPException) as exc:
+            parse_oauth_state(state, ("yandex_direct", "yandex_metrika"))
+        assert exc.value.status_code == 400
+
+    def test_tampered_user_id_rejected(self):
+        # Подмена user_id ломает HMAC-подпись
+        state = build_oauth_state(user_id=7, project_id=42, integration_type="yandex_direct")
+        payload, expires, signature = state.rsplit("|", 2)
+        forged = f"{payload.replace('7:', '8:', 1)}|{expires}|{signature}"
+        with pytest.raises(HTTPException) as exc:
+            parse_oauth_state(forged, ("yandex_direct",))
+        assert exc.value.status_code == 400
 
 
 # ---------- #2: PRAGMA foreign_keys реально включён на движке приложения ----------

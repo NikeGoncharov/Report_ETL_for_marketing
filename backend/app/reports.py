@@ -1,4 +1,5 @@
 """Reports API with transformation pipeline."""
+import asyncio
 import hashlib
 import json
 import time
@@ -291,7 +292,10 @@ async def run_pipeline_v2(
             )
         rows = await fetch_dataset(target, period, project_id, current_user, db, refresh)
         if stage == "transformed" and target.get("steps"):
-            rows = _run_steps(target_id, rows, target["steps"])
+            # to_thread: шаги считаются синхронно и на пользовательских regex/формулах
+            # могут занять минуты. В единственном процессе uvicorn это заблокировало бы
+            # весь сервис, поэтому уводим CPU-работу из event loop.
+            rows = await asyncio.to_thread(_run_steps, target_id, rows, target["steps"])
         return _result_table(rows)
 
     # Полный прогон: все датасеты + их шаги
@@ -300,7 +304,7 @@ async def run_pipeline_v2(
         ds_id = dataset.get("id")
         rows = await fetch_dataset(dataset, period, project_id, current_user, db, refresh)
         if dataset.get("steps"):
-            rows = _run_steps(ds_id, rows, dataset["steps"])
+            rows = await asyncio.to_thread(_run_steps, ds_id, rows, dataset["steps"])
         data[ds_id] = rows
 
     # Состояние 3а: сшивка
@@ -313,13 +317,14 @@ async def run_pipeline_v2(
             "type": "join",
             "left": left,
             "right": right,
-            "left_on": merge.get("left_key"),
-            "right_on": merge.get("right_key"),
+            # Составной ключ имеет приоритет; одиночный — для старых конфигов
+            "left_on": merge.get("left_keys") or merge.get("left_key"),
+            "right_on": merge.get("right_keys") or merge.get("right_key"),
             "how": merge.get("how") or "left",
         }
         pipeline = TransformationPipeline([join_config])
         try:
-            data = pipeline.run(data)
+            data = await asyncio.to_thread(pipeline.run, data)
         except TransformationError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -341,7 +346,7 @@ async def run_pipeline_v2(
         }
         pipeline = TransformationPipeline([group_config])
         try:
-            data = pipeline.run(data)
+            data = await asyncio.to_thread(pipeline.run, data)
         except TransformationError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -583,6 +588,19 @@ async def run_report(
 
             export_config = report.config.get("export") or {}
             export_type = export_config.get("type") or "google_sheets"
+
+            # Экспорт чистит лист перед записью, поэтому пустой результат СТИРАЕТ
+            # клиентскую таблицу. Пустота почти всегда означает проблему (опечатка
+            # в ключе сшивки, нет данных за период, слишком строгий фильтр), а не
+            # намерение обнулить отчёт — не экспортируем и говорим об этом явно.
+            if not data_result["data"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Пайплайн вернул 0 строк — экспорт отменён, чтобы не стереть "
+                        "данные в таблице. Проверьте период, фильтры и ключи сшивки."
+                    ),
+                )
 
             if export_type == "google_sheets":
                 sheets_integration = await get_sheets_integration(project_id, current_user, db)

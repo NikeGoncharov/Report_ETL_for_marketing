@@ -168,8 +168,15 @@ class MergeConfig(BaseModel):
     enabled: bool = False
     left: Optional[str] = None  # id датасета
     right: Optional[str] = None
+    # Одиночный ключ — исходный формат, сохраняется для старых конфигов.
     left_key: Optional[str] = None  # имя колонки слева (например campaignname)
     right_key: Optional[str] = None  # имя колонки справа (например UTMCampaign)
+    # СОСТАВНОЙ ключ. Если оба датасета дневные, сшивка по одной лишь кампании
+    # склеивает каждый день слева с каждым днём справа (декартово произведение)
+    # и завышает суммы кратно числу дней. Для таких отчётов в ключ добавляется
+    # дата: left_keys=["campaignname","date"], right_keys=["UTMCampaign","date"].
+    left_keys: Optional[List[str]] = None
+    right_keys: Optional[List[str]] = None
     how: Literal["inner", "left", "right", "outer"] = "left"
 
 

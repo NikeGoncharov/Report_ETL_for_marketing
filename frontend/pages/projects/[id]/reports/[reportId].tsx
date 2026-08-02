@@ -24,6 +24,10 @@ export default function ReportPage() {
   useEffect(() => {
     if (!id || !reportId) return;
     let active = true;
+    // При переходе между отчётами показываем загрузку, а не данные предыдущего
+    setLoading(true);
+    setReport(null);
+    setProject(null);
 
     Promise.all([
       projectsApi.get(projectId),
@@ -35,7 +39,9 @@ export default function ReportPage() {
         setReport(reportData);
       })
       .catch(() => {
-        router.push(`/projects/${id}`);
+        // Поздний reject уже неактуального запроса не должен уводить со страницы,
+        // которую пользователь тем временем открыл
+        if (active) router.push(`/projects/${id}`);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -66,7 +72,10 @@ export default function ReportPage() {
         <span>{report.name}</span>
       </div>
 
-      <ReportWorkspace projectId={projectId} report={report} />
+      {/* key обязателен: без него переход между отчётами переиспользует
+          смонтированный ReportWorkspace, и сохранение уносит конфиг
+          предыдущего отчёта в текущий (безвозвратно). */}
+      <ReportWorkspace key={report.id} projectId={projectId} report={report} />
     </Layout>
   );
 }

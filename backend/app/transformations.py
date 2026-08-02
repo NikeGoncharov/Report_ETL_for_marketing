@@ -21,30 +21,46 @@ class BaseTransformation(ABC):
         pass
 
 
+# Regex приходит из пользовательского конфига. Питоновский re — бэктрекящий,
+# поэтому паттерн вида ^(\w+\s?)+$ на неподходящей строке считается экспоненциально
+# долго. Таймаута у re нет, так что ограничиваем вход: длину самого паттерна и
+# длину значения, подаваемого на вход (время растёт как ~2^n по длине строки).
+_REGEX_MAX_PATTERN_LENGTH = 200
+_REGEX_MAX_VALUE_LENGTH = 512
+
+
+def _compile_user_regex(pattern: str, flags: int = 0) -> "re.Pattern":
+    if len(pattern) > _REGEX_MAX_PATTERN_LENGTH:
+        raise TransformationError(
+            f"Слишком длинное регулярное выражение (>{_REGEX_MAX_PATTERN_LENGTH} символов)"
+        )
+    try:
+        return re.compile(pattern, flags)
+    except re.error as e:
+        raise TransformationError(f"Invalid regex pattern: {e}")
+
+
 class ExtractTransformation(BaseTransformation):
     """Extract part of a string using regex."""
-    
+
     def transform(self, data: Dict[str, List[Dict]], config: Dict[str, Any]) -> Dict[str, List[Dict]]:
         source = config.get("source")
         column = config.get("column")
         pattern = config.get("pattern")
         output_column = config.get("output_column")
-        
+
         if not all([source, column, pattern, output_column]):
             raise TransformationError("extract requires: source, column, pattern, output_column")
-        
+
         if source not in data:
             raise TransformationError(f"Source '{source}' not found")
-        
-        try:
-            regex = re.compile(pattern)
-        except re.error as e:
-            raise TransformationError(f"Invalid regex pattern: {e}")
-        
+
+        regex = _compile_user_regex(pattern)
+
         result = []
         for row in data[source]:
             new_row = row.copy()
-            value = str(row.get(column, ""))
+            value = str(row.get(column, ""))[:_REGEX_MAX_VALUE_LENGTH]
             match = regex.search(value)
             new_row[output_column] = match.group(1) if match and match.groups() else value
             result.append(new_row)
@@ -247,17 +263,81 @@ class JoinTransformation(BaseTransformation):
             return ""
         return str(value).strip().lower()
 
+    @staticmethod
+    def _columns(value: Any) -> List[str]:
+        """Сырой список колонок ключа: строка (один столбец) или список.
+
+        Пустые значения НЕ выбрасываются — они значимы позиционно и разбираются
+        попарно в _key_pairs. Независимая фильтрация каждой стороны молча сужала
+        бы составной ключ до подмножества (например ["","date"] -> ["date"]) и
+        возвращала бы декартово произведение с завышенными суммами.
+        """
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value] if value else []
+        return ["" if v is None else str(v) for v in value]
+
+    @staticmethod
+    def _key_pairs(left_raw: List[str], right_raw: List[str]) -> List[tuple]:
+        """Пары (левая колонка, правая колонка) для составного ключа."""
+        if len(left_raw) != len(right_raw):
+            raise TransformationError(
+                "join: число ключевых колонок слева и справа должно совпадать "
+                f"({len(left_raw)} и {len(right_raw)})"
+            )
+        pairs = []
+        for index, (left_col, right_col) in enumerate(zip(left_raw, right_raw), start=1):
+            left_col = (left_col or "").strip()
+            right_col = (right_col or "").strip()
+            if not left_col and not right_col:
+                # Пара не заполнена целиком — пользователь добавил строку и не
+                # заполнил её. Такую пару просто не учитываем.
+                continue
+            if not left_col or not right_col:
+                raise TransformationError(
+                    f"join: в паре ключей №{index} заполнена только одна сторона "
+                    f"(слева {left_col or '—'!r}, справа {right_col or '—'!r}). "
+                    "Заполните обе или уберите пару."
+                )
+            pairs.append((left_col, right_col))
+        if not pairs:
+            raise TransformationError("join requires: left, right and on (or left_on + right_on)")
+        return pairs
+
+    @staticmethod
+    def _check_columns_present(rows: List[Dict], columns: List[str], side: str, source: str) -> None:
+        """Опечатка в имени ключа или отсутствующая колонка иначе неотличимы от
+        «совпадений нет»: отчёт молча пустеет и затирает клиентскую таблицу."""
+        if not rows:
+            return
+        available = set()
+        for row in rows:
+            available.update(row.keys())
+        missing = [col for col in columns if col not in available]
+        if missing:
+            raise TransformationError(
+                f"join: колонка {missing[0]!r} отсутствует в датасете '{source}' ({side}). "
+                f"Доступные колонки: {', '.join(sorted(available))}"
+            )
+
+    def _key_tuple(self, row: Dict, columns: List[str]) -> tuple:
+        return tuple(self._key(row.get(col)) for col in columns)
+
     def transform(self, data: Dict[str, List[Dict]], config: Dict[str, Any]) -> Dict[str, List[Dict]]:
         left_source = config.get("left")
         right_source = config.get("right")
         on_column = config.get("on")
-        left_on = config.get("left_on") or on_column
-        right_on = config.get("right_on") or on_column
+        left_on = self._columns(config.get("left_on") or on_column)
+        right_on = self._columns(config.get("right_on") or on_column)
         how = config.get("how", "inner")  # inner, left, right, outer
         output_source = config.get("output", left_source)
 
-        if not all([left_source, right_source, left_on, right_on]):
+        if not left_source or not right_source or not left_on or not right_on:
             raise TransformationError("join requires: left, right and on (or left_on + right_on)")
+        pairs = self._key_pairs(left_on, right_on)
+        left_on = [pair[0] for pair in pairs]
+        right_on = [pair[1] for pair in pairs]
 
         if left_source not in data:
             raise TransformationError(f"Left source '{left_source}' not found")
@@ -267,28 +347,34 @@ class JoinTransformation(BaseTransformation):
         left_data = data[left_source]
         right_data = data[right_source]
 
+        # Ключевые колонки должны существовать. Иначе опечатка («date» там, где
+        # Директ выгружен по кампаниям) выглядит как «совпадений нет»: результат
+        # молча пустеет и затирает клиентскую таблицу при экспорте.
+        self._check_columns_present(left_data, left_on, "слева", left_source)
+        self._check_columns_present(right_data, right_on, "справа", right_source)
+
         # Build index for right data
         right_index = defaultdict(list)
         for row in right_data:
-            right_index[self._key(row.get(right_on, ""))].append(row)
+            right_index[self._key_tuple(row, right_on)].append(row)
 
         result = []
         used_right_keys = set()
 
         for left_row in left_data:
-            key = self._key(left_row.get(left_on, ""))
-            # Пустой ключ (нетегированный трафик, кампания без имени) НЕ матчим:
-            # иначе все строки с пустым ключом декартово склеиваются между собой,
+            key = self._key_tuple(left_row, left_on)
+            # Пустой компонент ключа (нетегированный трафик, кампания без имени)
+            # НЕ матчим: иначе все такие строки декартово склеиваются между собой,
             # приписывая чужие визиты/доход. Пустые правые строки остаются в
             # индексе и всплывают только как unmatched в right/outer join.
-            right_rows = right_index.get(key, []) if key != "" else []
+            right_rows = [] if any(part == "" for part in key) else right_index.get(key, [])
 
             if right_rows:
                 used_right_keys.add(key)
                 for right_row in right_rows:
                     merged = {**left_row}
                     for k, v in right_row.items():
-                        if k == right_on:  # Don't duplicate join column
+                        if k in right_on:  # Don't duplicate join columns
                             continue
                         # Add prefix if column already exists
                         new_key = k if k not in merged else f"right_{k}"
@@ -300,9 +386,25 @@ class JoinTransformation(BaseTransformation):
         # Add unmatched right rows for outer/right join
         if how in ("right", "outer"):
             for key, right_rows in right_index.items():
-                if key not in used_right_keys:
-                    for right_row in right_rows:
-                        result.append(right_row.copy())
+                if key in used_right_keys:
+                    continue
+                for right_row in right_rows:
+                    new_row = right_row.copy()
+                    # Ключ несматченной правой строки переносим в ИМЕНА ЛЕВЫХ
+                    # колонок — как у сматченных строк. Иначе значение ключа
+                    # остаётся в «правой» колонке, и последующая группировка по
+                    # левому ключу теряет эти строки.
+                    for left_col, right_col in zip(left_on, right_on):
+                        if left_col == right_col:
+                            continue
+                        # Если у правого датасета уже есть одноимённая колонка,
+                        # сохраняем её под right_<name> — ровно так же, как это
+                        # делает ветка сматченных строк, а не затираем.
+                        if left_col in new_row:
+                            new_row[f"right_{left_col}"] = new_row[left_col]
+                        new_row[left_col] = right_row.get(right_col, "")
+                        new_row.pop(right_col, None)
+                    result.append(new_row)
 
         data[output_source] = result
         return data
@@ -521,8 +623,10 @@ class FindReplaceTransformation(BaseTransformation):
         replace_all = not find.strip("*")
         pattern = None
         if not replace_all:
-            # Excel-маска -> regex: * становится .*, остальное экранируется
-            pattern = re.compile(
+            # Excel-маска -> regex: * становится .*, остальное экранируется.
+            # Экранирование убирает произвольные конструкции, но цепочка «.*» из
+            # многих звёздочек всё равно бэктрекает — поэтому общий лимит длины.
+            pattern = _compile_user_regex(
                 ".*".join(re.escape(part) for part in find.split("*")),
                 re.IGNORECASE,
             )

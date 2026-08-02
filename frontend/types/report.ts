@@ -50,8 +50,13 @@ export type MergeConfig = {
   enabled: boolean;
   left?: string;
   right?: string;
+  // Одиночный ключ — исходный формат (старые конфиги)
   left_key?: string;
   right_key?: string;
+  // Составной ключ: если оба датасета дневные, сшивка только по кампании
+  // склеивает каждый день с каждым и завышает суммы — в ключ добавляется дата
+  left_keys?: string[];
+  right_keys?: string[];
   how: "inner" | "left" | "right" | "outer";
 };
 

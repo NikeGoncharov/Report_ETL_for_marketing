@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 import hashlib
 import hmac
 import logging
+import secrets
 import time
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -16,7 +17,7 @@ import httpx
 from app.database import get_db
 from app.models import User, Project, Integration
 from app.schemas import IntegrationResponse
-from app.auth import get_current_user
+from app.auth import get_current_user, decode_token, ACCESS_TOKEN_COOKIE
 from app.config import (
     YANDEX_CLIENT_ID, YANDEX_CLIENT_SECRET, YANDEX_REDIRECT_URI,
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
@@ -143,6 +144,80 @@ def verify_oauth_state(state: str) -> str:
     return payload
 
 
+# Одноразовые nonce выданных state: nonce -> момент истечения. Процесс uvicorn
+# один, поэтому dict в памяти достаточен. Без одноразовости подписанный state,
+# осевший в истории браузера, Referer или логах Caddy/Cloudflare, все 10 минут
+# остаётся действующим «предъявительским» пропуском на привязку интеграции.
+_oauth_nonces: Dict[str, float] = {}
+
+
+def _issue_oauth_nonce() -> str:
+    now = time.time()
+    for used_nonce, expires_at in list(_oauth_nonces.items()):
+        if expires_at < now:
+            _oauth_nonces.pop(used_nonce, None)
+    nonce = secrets.token_urlsafe(16)
+    _oauth_nonces[nonce] = now + OAUTH_STATE_TTL_SECONDS
+    return nonce
+
+
+def _consume_oauth_nonce(nonce: str) -> bool:
+    """Гасит nonce: повторное предъявление того же state отклоняется."""
+    expires_at = _oauth_nonces.pop(nonce, None)
+    return expires_at is not None and expires_at >= time.time()
+
+
+def build_oauth_state(user_id: int, project_id: int, integration_type: str) -> str:
+    """State привязан к ИНИЦИАТОРУ потока и одноразов."""
+    return sign_oauth_state(f"{user_id}:{project_id}:{integration_type}:{_issue_oauth_nonce()}")
+
+
+def parse_oauth_state(state: str, expected_types: tuple) -> tuple:
+    """Проверяет подпись, срок, тип и гасит nonce. -> (user_id, project_id, type)."""
+    payload = verify_oauth_state(state)
+    try:
+        user_id_raw, project_id_raw, integration_type, nonce = payload.split(":")
+        user_id = int(user_id_raw)
+        project_id = int(project_id_raw)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid state parameter",
+        )
+    if integration_type not in expected_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid state parameter",
+        )
+    if not _consume_oauth_nonce(nonce):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ссылка авторизации уже использована или устарела. Начните подключение заново.",
+        )
+    return user_id, project_id, integration_type
+
+
+async def _current_user_from_cookie(request: Request, db: AsyncSession) -> Optional[User]:
+    """Пользователь из access-куки для OAuth-callback.
+
+    Провайдер редиректит браузер top-level GET-переходом, поэтому куки
+    SameSite=lax доезжают. Возвращаем None вместо 401: на callback нужен
+    внятный редирект в UI, а не JSON-ошибка в адресной строке.
+    """
+    token = request.cookies.get(ACCESS_TOKEN_COOKIE)
+    if not token:
+        return None
+    payload = decode_token(token)
+    if payload is None or payload.get("type") != "access":
+        return None
+    try:
+        user_id = int(payload.get("sub"))
+    except (TypeError, ValueError):
+        return None
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+
 async def verify_project_access(
     project_id: int,
     current_user: User,
@@ -183,8 +258,8 @@ async def get_yandex_auth_url(
             detail="Yandex OAuth not configured"
         )
     
-    # State contains project_id and integration_type for callback
-    state = sign_oauth_state(f"{project_id}:{integration_type}")
+    # State привязан к инициатору (user_id) и одноразов — см. build_oauth_state
+    state = build_oauth_state(current_user.id, project_id, integration_type)
 
     # Different scopes for Direct and Metrika
     if integration_type == "yandex_direct":
@@ -207,25 +282,29 @@ async def get_yandex_auth_url(
 
 @router.get("/yandex/callback")
 async def yandex_callback(
+    request: Request,
     code: str,
     state: str,
     db: AsyncSession = Depends(get_db)
 ):
     """Handle Yandex OAuth callback."""
-    payload = verify_oauth_state(state)
-    try:
-        project_id, integration_type = payload.split(":")
-        project_id = int(project_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid state parameter"
+    state_user_id, project_id, integration_type = parse_oauth_state(
+        state, ("yandex_direct", "yandex_metrika")
+    )
+
+    # Поток должен завершать ТОТ ЖЕ пользователь, который его начал. Иначе
+    # владелец чужого аккаунта Яндекса, прошедший согласие по подсунутой ссылке,
+    # привязал бы свои токены к проекту атакующего (и наоборот).
+    current_user = await _current_user_from_cookie(request, db)
+    if current_user is None or current_user.id != state_user_id:
+        logger.warning(
+            "OAuth callback отклонён: сессия не совпадает с инициатором state "
+            "(project_id=%s, type=%s)", project_id, integration_type,
         )
-    if integration_type not in ("yandex_direct", "yandex_metrika"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid state parameter"
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/projects/{project_id}/integrations?error=session_mismatch"
         )
+    await verify_project_access(project_id, current_user, db)
 
     # Exchange code for tokens
     async with httpx.AsyncClient() as client:
@@ -292,7 +371,7 @@ async def get_google_auth_url(
             detail="Google OAuth not configured"
         )
     
-    state = sign_oauth_state(str(project_id))
+    state = build_oauth_state(current_user.id, project_id, "google_sheets")
     scope = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file"
 
     params = {
@@ -311,19 +390,24 @@ async def get_google_auth_url(
 
 @router.get("/google/callback")
 async def google_callback(
+    request: Request,
     code: str,
     state: str,
     db: AsyncSession = Depends(get_db)
 ):
     """Handle Google OAuth callback."""
-    payload = verify_oauth_state(state)
-    try:
-        project_id = int(payload)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid state parameter"
+    state_user_id, project_id, _ = parse_oauth_state(state, ("google_sheets",))
+
+    current_user = await _current_user_from_cookie(request, db)
+    if current_user is None or current_user.id != state_user_id:
+        logger.warning(
+            "Google OAuth callback отклонён: сессия не совпадает с инициатором "
+            "state (project_id=%s)", project_id,
         )
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/projects/{project_id}/integrations?error=session_mismatch"
+        )
+    await verify_project_access(project_id, current_user, db)
 
     # Exchange code for tokens
     async with httpx.AsyncClient() as client:

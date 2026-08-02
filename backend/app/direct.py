@@ -168,77 +168,82 @@ async def fetch_direct_stats(
                 timeout=60.0,
             )
 
-            if response.status_code == 200 and response.text.strip():
-                lines = response.text.strip().split("\n")
-                if len(lines) >= 2:
-                    report_headers = lines[0].split("\t")
-                    data = []
-                    for line in lines[1:]:
-                        values = line.split("\t")
-                        row = {}
-                        for i, header in enumerate(report_headers):
-                            if i < len(values):
-                                value = values[i]
-                                key = header.lower()
-                                # "--" — так Reports API отдаёт отсутствующее значение
-                                if value == "--":
-                                    value = ""
-                                if key in DIRECT_INT_FIELDS:
-                                    row[key] = int(float(value)) if value else 0
-                                elif key in DIRECT_FLOAT_FIELDS:
-                                    row[key] = float(value) if value else 0.0
-                                else:
-                                    row[key] = value
-                        data.append(row)
-                    return data
+            if response.status_code == 200:
+                body = response.text.strip()
+                # Пустой отчёт при skipReportHeader=true — это ОДНА строка с именами
+                # полей (или пусто). Это валидный результат «данных за период нет»,
+                # а не повод подсовывать статистику из другого источника.
+                lines = body.split("\n") if body else []
+                if len(lines) < 2:
+                    logger.info(
+                        "Direct Reports API: пустой отчёт за %s..%s (нет данных за период)",
+                        date_from, date_to,
+                    )
+                    return []
+
+                report_headers = lines[0].split("\t")
+                data = []
+                for line in lines[1:]:
+                    values = line.split("\t")
+                    row = {}
+                    for i, header in enumerate(report_headers):
+                        if i < len(values):
+                            value = values[i]
+                            key = header.lower()
+                            # "--" — так Reports API отдаёт отсутствующее значение
+                            if value == "--":
+                                value = ""
+                            if key in DIRECT_INT_FIELDS:
+                                row[key] = int(float(value)) if value else 0
+                            elif key in DIRECT_FLOAT_FIELDS:
+                                row[key] = float(value) if value else 0.0
+                            else:
+                                row[key] = value
+                    data.append(row)
+                return data
 
             if response.status_code in (201, 202):
-                # Report is being generated; wait and retry with same params
+                # Отчёт ставится в очередь; ждём и повторяем с теми же параметрами
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay_seconds)
                     continue
-            break
+                logger.warning(
+                    "Direct Reports API не подготовил отчёт за %d попыток (%s..%s)",
+                    max_retries, date_from, date_to,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                    detail=(
+                        "Яндекс.Директ не успел подготовить отчёт за период "
+                        f"{date_from}—{date_to}. Повторите запуск через минуту."
+                    ),
+                )
 
-    # Fallback: campaigns with Statistics (campaign-level aggregate).
-    # ВНИМАНИЕ: это ДРУГОЙ, более бедный срез, чем Reports API — тут нет
-    # Date/Ctr/AvgCpc/Conversions, а деньги приходят в МИКРОденьгах (у campaigns
-    # нет заголовка returnMoneyInMicros=false, поэтому Cost делим на 1e6).
-    # Ключи приводим к тем же lowercase-именам, что и основной путь (campaignid,
-    # campaignname, ...), чтобы merge/шаги по campaignname продолжали работать.
-    # include_vat здесь неприменим: campaigns Statistics не переключает НДС.
-    logger.warning(
-        "Direct Reports API не готов после %d попыток -> фолбэк на campaigns "
-        "Statistics (агрегат, без Date/Ctr/Conversions, НДС как в аккаунте)",
-        max_retries,
+            # 4xx/5xx — жёсткая ошибка (протухший токен, невалидные поля, сбой API).
+            # Раньше она молча уходила в фолбэк и подменялась статистикой «за всё
+            # время» — теперь причина видна пользователю и в логах.
+            logger.error(
+                "Direct Reports API HTTP %s: %s",
+                response.status_code, response.text[:500],
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    f"Яндекс.Директ отклонил запрос отчёта (HTTP {response.status_code}): "
+                    f"{response.text[:300]}"
+                ),
+            )
+
+    # Недостижимо: каждая ветка цикла либо возвращает данные, либо поднимает ошибку.
+    # ФОЛБЭК НА campaigns.get УДАЛЁН СОЗНАТЕЛЬНО: у campaigns.get в SelectionCriteria
+    # нет полей дат, поэтому Statistics отдаёт агрегат ЗА ВСЁ ВРЕМЯ жизни кампании.
+    # Эти числа попадали в отчёт под теми же ключами, что и данные за период, и
+    # молча уезжали клиенту в Google Sheets (расход за 7 месяцев вместо недели).
+    # Явная ошибка лучше тихо неверных денег.
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Яндекс.Директ не вернул отчёт за период.",
     )
-
-    def _micros_to_rub(value: Any) -> float:
-        try:
-            return round(float(value) / 1_000_000, 2)
-        except (TypeError, ValueError):
-            return 0.0
-
-    criteria = {"Ids": campaign_ids} if campaign_ids else {}
-    campaigns_result = await call_direct_api(
-        "campaigns",
-        {
-            "SelectionCriteria": criteria,
-            "FieldNames": ["Id", "Name", "Statistics"],
-        },
-        integration.access_token,
-    )
-    campaigns = campaigns_result.get("Campaigns", [])
-    # Statistics, как и DailyBudget, у части кампаний приходит как null
-    return [
-        {
-            "campaignid": c["Id"],
-            "campaignname": c["Name"],
-            "impressions": (c.get("Statistics") or {}).get("Impressions", 0),
-            "clicks": (c.get("Statistics") or {}).get("Clicks", 0),
-            "cost": _micros_to_rub((c.get("Statistics") or {}).get("Cost", 0)),
-        }
-        for c in campaigns
-    ]
 
 
 @router.get("/campaigns")

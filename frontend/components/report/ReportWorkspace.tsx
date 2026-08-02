@@ -4,6 +4,7 @@
 // сшить и выгрузить. Компактные карточки идут слева направо; сшивка и экспорт
 // появляются только после первой успешной выгрузки.
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/router";
 import {
   Catalog, DatasetConfig, DatasetType, DirectCampaign, MetrikaCounter,
   PipelineStage, PreviewResult, Report, ReportConfigV2, ReportRun, StepConfig,
@@ -45,6 +46,63 @@ export default function ReportWorkspace({
   const [transform, setTransform] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const dirty = useRef(false);
+  const router = useRouter();
+
+  // Несохранённые правки конструктора: предупреждаем и при закрытии вкладки,
+  // и при переходе внутри приложения (ссылки сайдбара размонтируют конструктор,
+  // а страница отчёта монтирует его заново по key — без этого правки исчезают молча).
+  useEffect(() => {
+    const MESSAGE = "Изменения отчёта не сохранены. Уйти со страницы и потерять их?";
+    // Диалог блокирующий: без флага двойной клик по ссылке показывает его дважды
+    let prompting = false;
+
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!dirty.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    const onRouteChangeStart = (url: string) => {
+      if (!dirty.current) return;
+      // Навигация на ТЕКУЩИЙ адрес (клик по ссылке уже открытого отчёта) ничего
+      // не размонтирует — спрашивать и уж тем более снимать dirty нельзя.
+      if (url === router.asPath) return;
+      if (prompting) {
+        router.events.emit("routeChangeError");
+        throw "routeChange aborted: диалог уже открыт";
+      }
+      prompting = true;
+      const leave = window.confirm(MESSAGE);
+      prompting = false;
+      if (leave) {
+        dirty.current = false;
+        return;
+      }
+      // Штатный для pages router способ отменить переход
+      router.events.emit("routeChangeError");
+      throw "routeChange aborted: несохранённые правки (ошибку можно игнорировать)";
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    router.events.on("routeChangeStart", onRouteChangeStart);
+    // Кнопки Назад/Вперёд идут мимо routeChangeStart-отмены: URL уже сменился,
+    // поэтому их перехватываем отдельно и возвращаем историю на место.
+    router.beforePopState(() => {
+      if (!dirty.current) return true;
+      if (window.confirm(MESSAGE)) {
+        dirty.current = false;
+        return true;
+      }
+      window.history.forward();
+      return false;
+    });
+
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      router.events.off("routeChangeStart", onRouteChangeStart);
+      router.beforePopState(() => true);
+    };
+  }, [router]);
 
   useEffect(() => {
     catalogApi.get().then(setCatalog).catch(() => setCatalog(null));

@@ -55,6 +55,47 @@ export default function StageThreePanel({
     label: d.label || d.id,
   }));
 
+  // Ключи сшивки: работаем со списком пар. Старые конфиги хранят одиночные
+  // left_key/right_key — разворачиваем их в список из одной пары.
+  const keyPairs: Array<{ left: string; right: string }> = (() => {
+    const left = merge.left_keys ?? (merge.left_key ? [merge.left_key] : [""]);
+    const right = merge.right_keys ?? (merge.right_key ? [merge.right_key] : [""]);
+    const count = Math.max(left.length, right.length, 1);
+    return Array.from({ length: count }, (_, i) => ({
+      left: left[i] ?? "",
+      right: right[i] ?? "",
+    }));
+  })();
+
+  const writeKeyPairs = (pairs: Array<{ left: string; right: string }>) => {
+    // Полностью пустые пары в конфиг не уходят: бэкенд их отбрасывает, и
+    // расхождение «в UI три пары, реально сшивка по одной» только путает.
+    const meaningful = pairs.filter((p) => p.left.trim() || p.right.trim());
+    const left_keys = meaningful.map((p) => p.left);
+    const right_keys = meaningful.map((p) => p.right);
+    onMergeChange({
+      ...merge,
+      left_keys,
+      right_keys,
+      // одиночные поля держим синхронными с первой парой (обратная совместимость)
+      left_key: left_keys[0] || "",
+      right_key: right_keys[0] || "",
+    });
+  };
+
+  // Наполовину заполненная пара — ошибка: бэкенд такую сшивку отклонит
+  const halfFilledPair = keyPairs.some(
+    (p) => Boolean(p.left.trim()) !== Boolean(p.right.trim()),
+  );
+
+  const setKeyPair = (index: number, pair: { left: string; right: string }) =>
+    writeKeyPairs(keyPairs.map((p, i) => (i === index ? pair : p)));
+
+  const addKeyPair = () => writeKeyPairs([...keyPairs, { left: "", right: "" }]);
+
+  const removeKeyPair = (index: number) =>
+    writeKeyPairs(keyPairs.filter((_, i) => i !== index));
+
   return (
     <div className="stage-three">
       {/* Сшивка */}
@@ -86,15 +127,6 @@ export default function StageThreePanel({
                   ))}
                 </select>
               </label>
-              <label className="input-label">
-                Ключ слева
-                <ColumnInput
-                  value={merge.left_key || ""}
-                  onChange={(v) => onMergeChange({ ...merge, left_key: v })}
-                  suggestions={columnsHint.length ? columnsHint : ["campaignname", "campaignid"]}
-                  placeholder="например campaignname"
-                />
-              </label>
             </div>
             <div className="step-fields">
               <label className="input-label">
@@ -111,15 +143,6 @@ export default function StageThreePanel({
                 </select>
               </label>
               <label className="input-label">
-                Ключ справа
-                <ColumnInput
-                  value={merge.right_key || ""}
-                  onChange={(v) => onMergeChange({ ...merge, right_key: v })}
-                  suggestions={["UTMCampaign", "UTMSource", "utm_campaign"]}
-                  placeholder="например UTMCampaign"
-                />
-              </label>
-              <label className="input-label">
                 Тип
                 <select
                   className="input"
@@ -133,9 +156,58 @@ export default function StageThreePanel({
                 </select>
               </label>
             </div>
+
+            {/* Ключи сшивки: пар может быть несколько. Для дневных датасетов
+                в ключ обязательно добавлять дату, иначе каждый день слева
+                склеится с каждым днём справа и суммы будут завышены. */}
+            {keyPairs.map((pair, index) => (
+              <div className="step-fields" key={index}>
+                <label className="input-label">
+                  {index === 0 ? "Ключ слева" : `Ключ слева ${index + 1}`}
+                  <ColumnInput
+                    value={pair.left}
+                    onChange={(v) => setKeyPair(index, { ...pair, left: v })}
+                    suggestions={columnsHint.length ? columnsHint : ["campaignname", "campaignid", "date"]}
+                    placeholder={index === 0 ? "например campaignname" : "например date"}
+                  />
+                </label>
+                <label className="input-label">
+                  {index === 0 ? "Ключ справа" : `Ключ справа ${index + 1}`}
+                  <ColumnInput
+                    value={pair.right}
+                    onChange={(v) => setKeyPair(index, { ...pair, right: v })}
+                    suggestions={["UTMCampaign", "UTMSource", "utm_campaign", "date"]}
+                    placeholder={index === 0 ? "например UTMCampaign" : "например date"}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => removeKeyPair(index)}
+                  disabled={keyPairs.length === 1 && !pair.left && !pair.right}
+                >
+                  Убрать
+                </button>
+              </div>
+            ))}
+            <div className="step-fields">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={addKeyPair}>
+                + Добавить ключ
+              </button>
+            </div>
+
+            {halfFilledPair && (
+              <div className="field-hint" style={{ color: "var(--danger)" }}>
+                В одной из пар заполнена только половина — укажите колонку с обеих
+                сторон или уберите пару, иначе сшивка не выполнится.
+              </div>
+            )}
+
             <div className="field-hint">
               Значения ключей сравниваются как строки без учёта регистра — названия кампаний
-              из Директа сматчатся с UTM-метками.
+              из Директа сматчатся с UTM-метками. Если оба датасета выгружены по дням,
+              добавьте вторым ключом дату: иначе каждый день слева склеится с каждым днём
+              справа и расход в отчёте будет завышен кратно числу дней.
             </div>
           </div>
         )}
